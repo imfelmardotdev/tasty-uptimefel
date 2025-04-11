@@ -9,6 +9,10 @@ export interface Website {
   responseTime?: number;
   lastChecked?: string;
   responseCode?: number;
+  uptime?: number; // Percentage of uptime (0-100)
+  incidents?: number; // Number of incidents in the last 24 hours
+  currentDowntime?: string; // How long the site has been down (if applicable)
+  lastIncidentTime?: string; // Timestamp of the last incident
 }
 
 export interface Alert {
@@ -179,6 +183,41 @@ class MonitoringService {
       const previousStatus = website.status;
       const newStatus = response.ok ? "up" : "down";
 
+      // Calculate incidents in the last 24 hours
+      const last24Hours = new Date(
+        Date.now() - 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const incidentsLast24Hours = this.alerts.filter(
+        (alert) => alert.websiteId === id && alert.timestamp >= last24Hours,
+      ).length;
+
+      // Calculate uptime percentage (simplified calculation)
+      // In a real app, this would be based on actual monitoring data over time
+      const uptime = this.calculateUptime(id);
+
+      // Calculate current downtime if site is down
+      let currentDowntime = "";
+      if (newStatus === "down") {
+        const lastUpAlert = this.alerts.find(
+          (alert) =>
+            alert.websiteId === id && alert.type === "down" && !alert.resolved,
+        );
+        if (lastUpAlert) {
+          const downSince = new Date(lastUpAlert.timestamp);
+          const downtimeMs = Date.now() - downSince.getTime();
+          const hours = Math.floor(downtimeMs / (1000 * 60 * 60));
+          const minutes = Math.floor(
+            (downtimeMs % (1000 * 60 * 60)) / (1000 * 60),
+          );
+          const seconds = Math.floor((downtimeMs % (1000 * 60)) / 1000);
+          currentDowntime = `${hours}h ${minutes}m ${seconds}s`;
+        }
+      }
+
+      // Get last incident time
+      const lastIncident = this.alerts.find((alert) => alert.websiteId === id);
+      const lastIncidentTime = lastIncident ? lastIncident.timestamp : null;
+
       // Update the website status
       const updatedWebsite: Website = {
         ...website,
@@ -186,6 +225,10 @@ class MonitoringService {
         responseTime,
         lastChecked: now,
         responseCode: response.status,
+        uptime,
+        incidents: incidentsLast24Hours,
+        currentDowntime: currentDowntime || undefined,
+        lastIncidentTime: lastIncidentTime || undefined,
       };
 
       const index = this.websites.findIndex((w) => w.id === id);
@@ -207,12 +250,48 @@ class MonitoringService {
       this.notifyListeners("websitesUpdated");
     } catch (error) {
       // Handle network errors or timeouts
+      // Calculate incidents in the last 24 hours
+      const last24Hours = new Date(
+        Date.now() - 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const incidentsLast24Hours = this.alerts.filter(
+        (alert) => alert.websiteId === id && alert.timestamp >= last24Hours,
+      ).length;
+
+      // Calculate uptime percentage
+      const uptime = this.calculateUptime(id);
+
+      // Calculate current downtime
+      let currentDowntime = "";
+      const lastUpAlert = this.alerts.find(
+        (alert) =>
+          alert.websiteId === id && alert.type === "down" && !alert.resolved,
+      );
+      if (lastUpAlert) {
+        const downSince = new Date(lastUpAlert.timestamp);
+        const downtimeMs = Date.now() - downSince.getTime();
+        const hours = Math.floor(downtimeMs / (1000 * 60 * 60));
+        const minutes = Math.floor(
+          (downtimeMs % (1000 * 60 * 60)) / (1000 * 60),
+        );
+        const seconds = Math.floor((downtimeMs % (1000 * 60)) / 1000);
+        currentDowntime = `${hours}h ${minutes}m ${seconds}s`;
+      }
+
+      // Get last incident time
+      const lastIncident = this.alerts.find((alert) => alert.websiteId === id);
+      const lastIncidentTime = lastIncident ? lastIncident.timestamp : null;
+
       const updatedWebsite: Website = {
         ...website,
         status: "down",
         responseTime: 0,
         lastChecked: now,
         responseCode: 0,
+        uptime,
+        incidents: incidentsLast24Hours,
+        currentDowntime: currentDowntime || undefined,
+        lastIncidentTime: lastIncidentTime || undefined,
       };
 
       const index = this.websites.findIndex((w) => w.id === id);
@@ -246,6 +325,38 @@ class MonitoringService {
     this.alerts.unshift(alert); // Add to the beginning of the array
     this.saveToStorage();
     this.notifyListeners("alertsUpdated");
+  }
+
+  // Calculate uptime percentage for a website
+  private calculateUptime(websiteId: string): number {
+    // In a real app, this would be based on actual monitoring data over time
+    // For this demo, we'll use a simplified calculation based on alerts
+    const last7Days = new Date(
+      Date.now() - 7 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const alerts = this.alerts.filter(
+      (alert) => alert.websiteId === websiteId && alert.timestamp >= last7Days,
+    );
+
+    if (alerts.length === 0) return 100; // No alerts means 100% uptime
+
+    // Calculate total downtime in seconds
+    let totalDowntimeSeconds = 0;
+    alerts.forEach((alert) => {
+      if (alert.type === "down") {
+        totalDowntimeSeconds += alert.resolved
+          ? alert.duration
+          : Math.floor(
+              (Date.now() - new Date(alert.timestamp).getTime()) / 1000,
+            );
+      }
+    });
+
+    // Calculate uptime percentage (7 days = 604800 seconds)
+    const totalSeconds = 7 * 24 * 60 * 60; // 7 days in seconds
+    const uptimePercentage = 100 - (totalDowntimeSeconds / totalSeconds) * 100;
+
+    return Math.max(0, Math.min(100, parseFloat(uptimePercentage.toFixed(3))));
   }
 
   // Resolve all active alerts for a website
