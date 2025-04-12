@@ -16,7 +16,7 @@ JWT_SECRET=your-very-secure-secret
 DATABASE_PATH=./monitoring.db
 
 # CORS Configuration
-FRONTEND_URL=http://localhost:5174
+FRONTEND_URL=http://localhost:5173
 ```
 
 ### Frontend (.env)
@@ -31,33 +31,59 @@ VITE_APP_NAME=WebMonitor
 VITE_APP_DESCRIPTION=Website Monitoring Dashboard
 ```
 
+## Project Structure
+
+```
+uptimefel/
+├── src/             # Frontend source code
+├── server/          # Backend server code
+│   └── src/
+│       ├── auth/    # Authentication
+│       ├── database/# Database operations
+│       └── monitoring/# Website monitoring
+└── public/         # Static assets
+```
+
 ## Development Setup
 
 1. Clone the repository
-2. Set up backend:
+2. Install dependencies:
    ```bash
-   cd monitoring-server
-   cp .env.example .env    # Copy example env file
-   npm install
-   npm start
+   npm install        # Install frontend dependencies
+   cd server
+   npm install       # Install backend dependencies
+   cd ..
    ```
 
-3. Set up frontend:
+3. Set up environment files:
    ```bash
-   cd uptimefel
-   cp .env.example .env    # Copy example env file
-   npm install
-   npm run dev
+   # Copy frontend env file
+   cp .env.example .env
+
+   # Copy backend env file
+   cd server
+   cp .env.example .env
+   cd ..
    ```
 
-4. Register the first admin user:
+4. Start development servers:
+   ```bash
+   # Run both frontend and backend
+   npm run dev:all
+
+   # Or run them separately:
+   npm run dev      # Frontend only
+   npm run server   # Backend only
+   ```
+
+5. Register the first admin user:
    ```bash
    curl -X POST http://localhost:3001/api/auth/register \
    -H "Content-Type: application/json" \
    -d '{"email":"admin@example.com","password":"your-secure-password"}'
    ```
 
-5. Access the application at http://localhost:5174
+6. Access the application at http://localhost:5173
 
 ## Production Deployment
 

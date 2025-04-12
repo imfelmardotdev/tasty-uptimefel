@@ -6,7 +6,7 @@ import path from "path";
 export default defineConfig({
   base: process.env.NODE_ENV === "development" ? "/" : process.env.VITE_BASE_PATH || "/",
   server: {
-    port: 5174,
+    port: 5173,
     strictPort: true,
   },
   // Remove unused optimizeDeps config since we're not using tempo
