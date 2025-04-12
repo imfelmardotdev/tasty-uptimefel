@@ -1,6 +1,5 @@
-import { Suspense, useEffect } from "react";
+import { Suspense } from "react";
 import {
-  useRoutes,
   Routes,
   Route,
   Navigate,
@@ -9,44 +8,60 @@ import {
 import Home from "./components/home";
 import PublicStatusPage from "./components/public/PublicStatusPage";
 import LoginPage from "./components/auth/LoginPage";
-import routes from "tempo-routes";
+import { useAuth } from "./contexts/AuthContext"; // Import useAuth hook
 
-// Auth guard component
+// Protected Route Component: Uses AuthContext to check authentication
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const isAuthenticated = localStorage.getItem("isAuthenticated") === "true";
+  const { isAuthenticated } = useAuth(); // Use context state
   const location = useLocation();
 
   if (!isAuthenticated) {
+    // Redirect to login if not authenticated
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  return <>{children}</>;
+  return <>{children}</>; // Render children if authenticated
 };
 
-function App() {
-  // Check for authentication on app load
-  useEffect(() => {
-    // You could add token validation logic here
-    const checkAuth = () => {
-      if (typeof window !== "undefined") {
-        const isAuthenticated =
-          localStorage.getItem("isAuthenticated") === "true";
-        // Additional validation could be done here
-      }
-    };
+// Public Route Component: Redirects if already authenticated
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated } = useAuth();
 
-    checkAuth();
-  }, []);
+  // If user is authenticated, redirect away from public-only pages (like login)
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>; // Render children if not authenticated
+};
+
+
+function App() {
+  const { isAuthenticated } = useAuth(); // Get auth state for root redirect
 
   return (
     <Suspense fallback={<p>Loading...</p>}>
       <>
         <Routes>
-          {/* Public routes */}
-          <Route path="/status" element={<PublicStatusPage />} />
-          <Route path="/login" element={<LoginPage />} />
+          {/* Public routes wrapped with PublicRoute */}
+          <Route
+            path="/status"
+            element={
+              <PublicRoute>
+                <PublicStatusPage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <LoginPage />
+              </PublicRoute>
+            }
+          />
 
-          {/* Protected routes */}
+          {/* Protected routes wrapped with ProtectedRoute */}
           <Route
             path="/dashboard"
             element={
@@ -56,12 +71,11 @@ function App() {
             }
           />
 
-          {/* Redirect root to dashboard if authenticated, otherwise to status page */}
+          {/* Root path redirection based on context */}
           <Route
             path="/"
             element={
-              typeof window !== "undefined" &&
-              localStorage.getItem("isAuthenticated") === "true" ? (
+              isAuthenticated ? (
                 <Navigate to="/dashboard" replace />
               ) : (
                 <Navigate to="/status" replace />
@@ -69,7 +83,6 @@ function App() {
             }
           />
         </Routes>
-        {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
       </>
     </Suspense>
   );

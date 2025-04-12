@@ -1,30 +1,89 @@
-# React + TypeScript + Vite
+# WebMonitor
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A web application for monitoring website uptime and performance.
 
-Currently, two official plugins are available:
+## Environment Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Backend (.env)
 
-## Expanding the ESLint configuration
+```env
+# Server Configuration
+PORT=3001
+NODE_ENV=development
+JWT_SECRET=your-very-secure-secret
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+# Database Configuration
+DATABASE_PATH=./monitoring.db
 
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+# CORS Configuration
+FRONTEND_URL=http://localhost:5174
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+### Frontend (.env)
+
+```env
+# API Configuration
+VITE_API_URL=http://localhost:3001
+VITE_NODE_ENV=development
+
+# App Configuration
+VITE_APP_NAME=WebMonitor
+VITE_APP_DESCRIPTION=Website Monitoring Dashboard
+```
+
+## Development Setup
+
+1. Clone the repository
+2. Set up backend:
+   ```bash
+   cd monitoring-server
+   cp .env.example .env    # Copy example env file
+   npm install
+   npm start
+   ```
+
+3. Set up frontend:
+   ```bash
+   cd uptimefel
+   cp .env.example .env    # Copy example env file
+   npm install
+   npm run dev
+   ```
+
+4. Register the first admin user:
+   ```bash
+   curl -X POST http://localhost:3001/api/auth/register \
+   -H "Content-Type: application/json" \
+   -d '{"email":"admin@example.com","password":"your-secure-password"}'
+   ```
+
+5. Access the application at http://localhost:5174
+
+## Production Deployment
+
+For production deployment, update the environment variables:
+
+### Backend Production Settings:
+```env
+NODE_ENV=production
+JWT_SECRET=your-actual-secure-secret
+FRONTEND_URL=https://your-frontend-domain.com
+```
+
+### Frontend Production Settings:
+```env
+VITE_NODE_ENV=production
+VITE_API_URL=https://your-api-domain.com
+```
+
+## Security
+
+- Environment files (.env) contain sensitive information and should never be committed to the repository
+- The .env.example files serve as templates and should be copied to .env files
+- Add to your .gitignore:
+  ```
+  # Environment files
+  .env
+  .env.local
+  .env.*.local
+  ```

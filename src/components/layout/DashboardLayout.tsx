@@ -1,5 +1,5 @@
 import React, { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -12,25 +12,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
+import { useAuth } from "@/contexts/AuthContext";  // Import auth context
+
 interface DashboardLayoutProps {
   children: ReactNode;
 }
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
+  const navigate = useNavigate();
   const pathname = location.pathname;
+  const { isAuthenticated, logout } = useAuth();
 
-  // Check if user is logged in (in a real app, this would use a proper auth system)
-  const isLoggedIn =
-    typeof window !== "undefined"
-      ? localStorage.getItem("isLoggedIn") === "true"
-      : false;
+  // If not authenticated, redirect to login
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
 
-  // Mock user data
+  // Get user info from localStorage or use default
+  const userEmail = localStorage.getItem("userEmail") || "admin@example.com";
   const user = {
     name: "Admin User",
-    email: "admin@example.com",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
+    email: userEmail,
+    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userEmail}`,
   };
 
   const menuItems = [
@@ -62,10 +66,8 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   ];
 
   const handleLogout = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("isLoggedIn");
-      window.location.href = "/login";
-    }
+    logout(); // Clear auth state using context
+    navigate('/login'); // Use navigate for routing
   };
 
   return (

@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { loginUser } from "../../services/authService"; // Import the API function
+import { useAuth } from "../../contexts/AuthContext"; // Import useAuth hook
 
 const LoginPage = () => {
   const [email, setEmail] = useState("");
@@ -20,29 +22,28 @@ const LoginPage = () => {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth(); // Get login function from context
 
-  // Mock admin credentials - in a real app, this would be handled by a proper auth system
-  const mockAdminEmail = "admin@example.com";
-  const mockAdminPassword = "password123";
+  // Removed mock credentials
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
-    // Simple mock authentication
-    // In a real app, this would be replaced with a proper auth system
-    setTimeout(() => {
-      if (email === mockAdminEmail && password === mockAdminPassword) {
-        // Store auth state in localStorage
-        localStorage.setItem("isAuthenticated", "true");
-        localStorage.setItem("user", JSON.stringify({ email, role: "admin" }));
-        navigate("/dashboard");
-      } else {
-        setError("Invalid email or password");
-        setIsLoading(false);
-      }
-    }, 1000);
+    try {
+      const { token } = await loginUser(email, password);
+      login(token);
+      // Store email for display in dashboard
+      localStorage.setItem("userEmail", email);
+      navigate("/dashboard");
+    } catch (err: any) {
+      console.error("Login failed:", err);
+      // Use the error message from the API or a generic one
+      setError(err.message || "Login failed. Please check your credentials.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -90,9 +91,7 @@ const LoginPage = () => {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex justify-center text-sm text-muted-foreground">
-          <p>Demo credentials: admin@example.com / password123</p>
-        </CardFooter>
+        {/* Removed footer with demo credentials */}
       </Card>
     </div>
   );
