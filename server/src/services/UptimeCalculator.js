@@ -106,6 +106,10 @@ class UptimeCalculator {
    */
   async init() {
     const db = getDatabase();
+    if (!db) {
+        log.error(`[UptimeCalculator] Database not initialized for monitor ${this.monitorID}`);
+        return;
+    }
     const now = this.getCurrentDate();
 
     const loadStats = (table, cutoffKey, list) => {
@@ -194,6 +198,10 @@ class UptimeCalculator {
 
     // --- Persist to Database using raw SQL ---
     const db = getDatabase();
+    if (!db) {
+        log.error(`[UptimeCalculator] Database not initialized for update on monitor ${this.monitorID}`);
+        return;
+    }
     try {
         await new Promise((resolve, reject) => {
             db.serialize(() => {
@@ -435,6 +443,10 @@ class UptimeCalculator {
    */
   async cleanupOldStats() {
     const db = getDatabase();
+    if (!db) {
+        log.error(`[UptimeCalculator] Database not initialized for cleanup on monitor ${this.monitorID}`);
+        return;
+    }
     const now = this.getCurrentDate();
 
     const runDelete = (table, cutoffKey) => {

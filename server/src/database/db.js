@@ -122,13 +122,12 @@ const getWebsite = (id) => {
  */
 const createWebsite = (website) => {
     return new Promise((resolve, reject) => {
-        // Add 'active' column to INSERT
         const sql = `
             INSERT INTO monitored_websites (
                 name, url, check_interval, timeout_ms, retry_count,
                 accepted_status_codes, monitor_method, follow_redirects,
-                max_redirects, user_id, active 
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                max_redirects, user_id, active, monitor_type, monitor_config
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const params = [
@@ -141,8 +140,10 @@ const createWebsite = (website) => {
             website.monitor_method || 'GET',
             website.follow_redirects !== undefined ? (website.follow_redirects ? 1 : 0) : 1,
             website.max_redirects || 5,
-            website.user_id, // Ensure user_id is passed
-            1 // Default active to 1 (true)
+            website.user_id,
+            1, // Default active to 1 (true)
+            website.monitor_type || 'http',
+            website.monitor_config
         ];
 
         getDatabase().run(sql, params, function(err) {
@@ -181,7 +182,9 @@ const updateWebsite = (id, website) => {
                 monitor_method = COALESCE(?, monitor_method),
                 follow_redirects = COALESCE(?, follow_redirects),
                 max_redirects = COALESCE(?, max_redirects),
-                active = COALESCE(?, active), -- Add active field
+                active = COALESCE(?, active),
+                monitor_type = COALESCE(?, monitor_type),
+                monitor_config = COALESCE(?, monitor_config),
                 updated_at = DATETIME('now')
             WHERE id = ?
         `;
@@ -196,7 +199,9 @@ const updateWebsite = (id, website) => {
             website.monitor_method,
             website.follow_redirects !== undefined ? (website.follow_redirects ? 1 : 0) : undefined,
             website.max_redirects,
-            website.active !== undefined ? (website.active ? 1 : 0) : undefined, // Handle active boolean
+            website.active !== undefined ? (website.active ? 1 : 0) : undefined,
+            website.monitor_type,
+            website.monitor_config,
             id
         ];
 

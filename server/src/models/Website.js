@@ -17,8 +17,13 @@ class Website {
      * @returns {Promise<object>} Created website
      */
     static async create(data) {
-        // Directly call the createWebsite function from db.js
-        return createWebsite(data);
+        // Add monitor type and config if not provided
+        const websiteData = {
+            ...data,
+            monitor_type: data.monitorType || 'http',
+            monitor_config: data.monitorConfig ? JSON.stringify(data.monitorConfig) : null
+        };
+        return createWebsite(websiteData);
     }
 
     /**
@@ -48,8 +53,13 @@ class Website {
      * @returns {Promise<object>} Updated website
      */
     static async update(id, data) {
-        // Directly call the updateWebsite function from db.js
-        return updateWebsite(id, data);
+        // Handle monitor type and config in update
+        const updateData = {
+            ...data,
+            monitor_type: data.monitorType,
+            monitor_config: data.monitorConfig ? JSON.stringify(data.monitorConfig) : null
+        };
+        return updateWebsite(id, updateData);
     }
 
     /**

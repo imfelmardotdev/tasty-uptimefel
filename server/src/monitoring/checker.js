@@ -1,9 +1,16 @@
 const axios = require('axios');
 const UptimeCalculator = require('../services/UptimeCalculator');
-const { log } = require('../utils/logger'); // Assuming logger exists
-const dayjs = require('dayjs'); // Needed for timestamp
+const { log } = require('../utils/logger');
+const dayjs = require('dayjs');
+const https = require('https');
+const tls = require('tls');
 
-// Status constants (ensure these align with UptimeCalculator and Heartbeat model)
+// Monitor types
+const MONITOR_HTTP = 'http';
+const MONITOR_HTTPS = 'https';
+const MONITOR_KEYWORD = 'keyword';
+
+// Status constants
 const UP = 1;
 const DOWN = 0;
 const PENDING = 2; // Maybe map certain errors to PENDING later?
@@ -11,22 +18,29 @@ const MAINTENANCE = 3; // Not handled by checker currently
 
 /**
  * Creates an axios instance with configurable timeout and redirects
- * @param {object} config Website configuration
+ * @param {object} website Website configuration
  * @returns {import('axios').AxiosInstance}
  */
-const createAxiosInstance = (config) => {
-    return axios.create({
-        timeout: config.timeout_ms || 10000,
-        maxRedirects: config.follow_redirects ? (config.max_redirects || 5) : 0,
+const createAxiosInstance = (website) => {
+    const config = {
+        timeout: website.timeout_ms || 10000,
+        maxRedirects: website.follow_redirects ? (website.max_redirects || 5) : 0,
         validateStatus: function (status) {
-            // Consider any status code valid for the check, we record it anyway
             return status >= 100 && status < 600;
         },
         headers: {
-            // Add a user-agent to mimic a browser, some sites block default axios/script agents
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 UptimeFelMonitor/1.0'
         }
-    });
+    };
+
+    // For HTTPS monitoring, configure certificate validation
+    if (website.monitor_type === MONITOR_HTTPS && website.monitor_config?.verifySSL === false) {
+        config.httpsAgent = new https.Agent({
+            rejectUnauthorized: false
+        });
+    }
+
+    return axios.create(config);
 };
 
 /**
@@ -194,42 +208,131 @@ const performCheckWithRetries = async (website, axiosInstance) => {
 };
 
 /**
+ * Checks SSL certificate details
+ * @param {string} hostname The hostname to check
+ * @param {number} port The port to use
+ * @returns {Promise<object>} Certificate details
+ */
+const checkCertificate = (hostname, port = 443) => {
+    return new Promise((resolve, reject) => {
+        const socket = tls.connect(
+            {
+                host: hostname,
+                port: port,
+                servername: hostname
+            },
+            () => {
+                const cert = socket.getPeerCertificate();
+                socket.end();
+                resolve({
+                    valid: socket.authorized,
+                    expires: cert.valid_to,
+                    issuer: cert.issuer.CN,
+                    daysUntilExpiration: Math.ceil((new Date(cert.valid_to) - new Date()) / (1000 * 60 * 60 * 24))
+                });
+            }
+        );
+
+        socket.on('error', (error) => {
+            reject(error);
+        });
+    });
+};
+
+/**
+ * Performs keyword check in response body
+ * @param {string} body Response body
+ * @param {object} config Keyword configuration
+ * @returns {boolean} Whether keyword was found
+ */
+const checkKeyword = (body, config) => {
+    const keyword = config.keyword || '';
+    const caseSensitive = config.caseSensitive || false;
+    
+    if (!keyword) {
+        return true; // No keyword specified means pass
+    }
+
+    if (!caseSensitive) {
+        return body.toLowerCase().includes(keyword.toLowerCase());
+    }
+    
+    return body.includes(keyword);
+};
+
+/**
  * Performs a website check with the given configuration
  * @param {object} website The website configuration object
  * @returns {Promise<object>} Check result
  */
 const performCheck = async (website) => {
     const axiosInstance = createAxiosInstance(website);
-    const checkResult = await performCheckWithRetries(website, axiosInstance);
+    let checkResult = await performCheckWithRetries(website, axiosInstance);
 
-    // --- Integrate UptimeCalculator ---
+    // Additional checks based on monitor type
+    if (website.monitor_type === MONITOR_HTTPS || website.monitor_type === MONITOR_KEYWORD) {
+        try {
+            // For HTTPS, check certificate
+            if (website.monitor_type === MONITOR_HTTPS) {
+                const url = new URL(website.url);
+                const certInfo = await checkCertificate(url.hostname);
+                
+                checkResult.certInfo = certInfo;
+                
+                // Update isUp based on certificate validity and expiration threshold
+                if (!certInfo.valid) {
+                    checkResult.isUp = false;
+                    checkResult.error_message = 'Invalid SSL certificate';
+                } else if (website.monitor_config?.expiryThreshold && 
+                         certInfo.daysUntilExpiration <= website.monitor_config.expiryThreshold) {
+                    checkResult.isUp = false;
+                    checkResult.error_message = `Certificate expires in ${certInfo.daysUntilExpiration} days`;
+                }
+            }
+
+            // For keyword monitoring, check response body *after* the initial status check passes
+            if (website.monitor_type === MONITOR_KEYWORD && checkResult.isUp) {
+                // Need to re-fetch the content if the initial check was just a HEAD or didn't get body
+                // For simplicity here, we assume the initial check got the body or re-fetch
+                // A more optimized approach might store the body from the initial check if available
+                const response = await axiosInstance.get(website.url); // Re-fetch might be needed depending on initial check method
+                const keywordConfig = typeof website.monitor_config === 'string'
+                    ? JSON.parse(website.monitor_config)
+                    : website.monitor_config;
+                const keywordFound = checkKeyword(response.data, keywordConfig || {});
+
+                if (!keywordFound) {
+                    checkResult.isUp = false;
+                    checkResult.error_type = 'KEYWORD_MISMATCH';
+                    checkResult.error_message = `Keyword "${keywordConfig?.keyword || ''}" not found in response`;
+                }
+            }
+        } catch (error) {
+            // Handle errors during certificate or keyword checks
+            checkResult.isUp = false;
+            checkResult.error_message = error.message;
+            log.error(`[Checker] Additional check failed for ${website.url}:`, error);
+        }
+    }
+
+    // Update UptimeCalculator
     try {
         const calculator = await UptimeCalculator.getUptimeCalculator(website.id);
-
-        // Determine status code for UptimeCalculator
-        // Simple mapping for now: isUp -> UP, !isUp -> DOWN
-        // Could be enhanced to map specific errors to PENDING if needed
         const status = checkResult.isUp ? UP : DOWN;
 
         const heartbeatData = {
             status: status,
             ping: checkResult.responseTimeMs,
             message: checkResult.error_message || (checkResult.isUp ? `OK (${checkResult.statusCode})` : `Error (${checkResult.statusCode})`),
-            timestamp: dayjs(), // Use current time for the heartbeat record
+            timestamp: dayjs(),
         };
 
         await calculator.update(heartbeatData);
         log.debug(`[Checker] Updated stats for monitor ${website.id}`);
-
     } catch (error) {
         log.error(`[Checker] Failed to update UptimeCalculator for monitor ${website.id}:`, error);
-        // Decide if you want to re-throw or just log the error.
-        // Logging might be sufficient as the primary check result is still returned.
     }
-    // --- End Integration ---
 
-    // Return the original check result (status code, response time, etc.)
-    // The UptimeCalculator update happens as a side effect.
     return checkResult;
 };
 

@@ -1,224 +1,93 @@
-import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'; // Use correct imports
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
-import { Website } from '@/services/monitoringService'; // Import main Website type
-
-// Define the shape of the form data, excluding fields not edited here (like id, status, etc.)
-type EditableWebsiteData = Pick<
-    Website,
-    'name' | 'url' | 'interval' | 'timeout_ms' | 'retry_count' | 'accepted_statuses' | 'follow_redirects' | 'max_redirects'
->;
+import React, { useEffect, useMemo } from 'react';
+import WebsiteForm, { WebsiteFormValues } from './WebsiteForm'; // Import the shared form component and its type
+import monitoringService, { Website } from '@/services/monitoringService'; // Import service and type
 
 interface EditWebsiteDialogProps {
     open: boolean;
     onClose: () => void;
-    websiteToEdit: Website | null; // Pass the website object to edit
-    onUpdate: (id: number, data: Partial<EditableWebsiteData>) => void; // Callback for update
+    websiteToEdit: Website | null; // Pass the full website object
+    onUpdate: (updatedWebsite: Website) => void; // Callback after successful update
 }
 
 const EditWebsiteDialog: React.FC<EditWebsiteDialogProps> = ({ open, onClose, websiteToEdit, onUpdate }) => {
-    // Initialize form data state
-    const [formData, setFormData] = useState<Partial<EditableWebsiteData>>({});
-    const [error, setError] = useState<string | null>(null);
 
-    // Populate form when websiteToEdit changes (dialog opens)
-    useEffect(() => {
-        if (websiteToEdit) {
-            setFormData({
-                name: websiteToEdit.name || '',
-                url: websiteToEdit.url || '',
-                interval: websiteToEdit.interval || 300,
-                timeout_ms: websiteToEdit.timeout_ms || 5000,
-                retry_count: websiteToEdit.retry_count || 1,
-                accepted_statuses: websiteToEdit.accepted_statuses || '200-299',
-                follow_redirects: websiteToEdit.follow_redirects !== undefined ? websiteToEdit.follow_redirects : true,
-                max_redirects: websiteToEdit.max_redirects || 5,
-            });
-            setError(null); // Clear errors when opening
-        } else {
-             // Reset form if no website is passed (e.g., dialog closed improperly)
-             setFormData({});
-        }
-    }, [websiteToEdit, open]); // Depend on websiteToEdit and open state
+    const handleUpdateWebsite = async (data: any) => {
+        if (!websiteToEdit) return;
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        setError(null);
-
-        if (!websiteToEdit) {
-            setError("No website selected for editing.");
-            return;
-        }
-
-        // Basic validation
-        if (!formData.name?.trim() || !formData.url?.trim()) {
-            setError('Name and URL are required');
-            return;
-        }
-
-        // URL validation
+        // The WebsiteForm structures the data correctly
         try {
-            new URL(formData.url);
-        } catch {
-            setError('Please enter a valid URL');
-            return;
+            const updatedWebsite = await monitoringService.updateWebsite(websiteToEdit.id, data);
+            onUpdate(updatedWebsite); // Pass updated data back
+            onClose(); // Close dialog on success
+        } catch (error) {
+            console.error("Failed to update website:", error);
+            // Error handling can be enhanced in WebsiteForm itself or here
+        }
+    };
+
+    // Prepare initial values for the form, parsing monitor_config if it exists
+    const initialFormValues = useMemo((): Partial<WebsiteFormValues> => { // Explicitly type the return value
+        if (!websiteToEdit) {
+            // Return type must match Partial<WebsiteFormValues>
+            return {
+                url: "",
+                name: "",
+                timeout_ms: 5000, // Use timeout_ms
+                monitorType: 'http', // Default type, satisfies the enum
+                monitorConfig: {}, // Default empty config
+            };
         }
 
-        // Prepare data, converting types as needed
-        const updateData: Partial<EditableWebsiteData> = {
-            ...formData,
-            interval: Number(formData.interval) || undefined,
-            timeout_ms: Number(formData.timeout_ms) || undefined,
-            retry_count: Number(formData.retry_count) || undefined,
-            max_redirects: Number(formData.max_redirects) || undefined,
+        let parsedConfig = {};
+        // Use camelCase property 'monitorConfig' from the Website interface
+        if (websiteToEdit.monitorConfig && typeof websiteToEdit.monitorConfig === 'string') {
+            try {
+                parsedConfig = JSON.parse(websiteToEdit.monitorConfig);
+            } catch (e) {
+                console.error("Failed to parse monitorConfig:", e);
+                // Use default empty config if parsing fails
+            }
+        } else if (typeof websiteToEdit.monitorConfig === 'object' && websiteToEdit.monitorConfig !== null) {
+             parsedConfig = websiteToEdit.monitorConfig; // Already an object
+        }
+
+        // Define the expected monitor type values and type guard
+        const validMonitorTypes = ['http', 'https', 'keyword'] as const;
+        type ValidMonitorType = typeof validMonitorTypes[number];
+        const isMonitorType = (type: any): type is ValidMonitorType => validMonitorTypes.includes(type);
+
+        // Validate and set monitorType
+        const currentMonitorType: ValidMonitorType = isMonitorType(websiteToEdit.monitorType)
+            ? websiteToEdit.monitorType
+            : 'http'; // Default to 'http' if invalid or missing
+
+        // Return only the fields defined in the WebsiteForm schema
+        // Ensure the return type matches Partial<WebsiteFormValues>
+        const values: Partial<WebsiteFormValues> = {
+            url: websiteToEdit.url || "",
+            name: websiteToEdit.name || "",
+            timeout_ms: websiteToEdit.timeout_ms || 5000, // Use timeout_ms
+            monitorType: currentMonitorType,
+            monitorConfig: parsedConfig,
         };
+        return values;
+    }, [websiteToEdit]);
 
 
-        onUpdate(websiteToEdit.id, updateData);
-        // onClose(); // Let the parent handle closing after successful update
-    };
-
-    // Generic change handler for inputs
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
-        setError(null); // Clear error on change
-    };
-
-     // Specific handler for checkbox
-     const handleCheckboxChange = (checked: boolean | 'indeterminate') => {
-        setFormData(prev => ({
-            ...prev,
-            follow_redirects: !!checked // Ensure boolean
-        }));
-    };
-
+    // Need to ensure the form resets or updates when the dialog reopens with a different website
+    // WebsiteForm uses react-hook-form, which handles this via the key prop or reset function.
+    // We'll pass a key based on the website ID to force re-render.
+    const formKey = websiteToEdit ? `edit-${websiteToEdit.id}` : 'edit-new';
 
     return (
-        <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                    <DialogTitle>Edit Website Monitor</DialogTitle>
-                </DialogHeader>
-
-                <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                    {error && (
-                        <div className="text-red-500 text-sm">{error}</div>
-                    )}
-
-                    <div className="space-y-2">
-                        <Label htmlFor="edit-name">Website Name</Label>
-                        <Input
-                            id="edit-name"
-                            name="name"
-                            value={formData.name || ''}
-                            onChange={handleChange}
-                            placeholder="My Website"
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="edit-url">URL</Label>
-                        <Input
-                            id="edit-url"
-                            name="url"
-                            value={formData.url || ''}
-                            onChange={handleChange}
-                            placeholder="https://example.com"
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-interval">Check Interval (seconds)</Label>
-                            <Input
-                                id="edit-interval"
-                                name="interval"
-                                type="number"
-                                value={formData.interval || ''}
-                                onChange={handleChange}
-                                min={60}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-timeout_ms">Timeout (ms)</Label>
-                            <Input
-                                id="edit-timeout_ms"
-                                name="timeout_ms"
-                                type="number"
-                                value={formData.timeout_ms || ''}
-                                onChange={handleChange}
-                                min={1000}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-retry_count">Retry Count</Label>
-                            <Input
-                                id="edit-retry_count"
-                                name="retry_count"
-                                type="number"
-                                value={formData.retry_count || ''}
-                                onChange={handleChange}
-                                min={0} // Allow 0 retries
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-max_redirects">Max Redirects</Label>
-                            <Input
-                                id="edit-max_redirects"
-                                name="max_redirects"
-                                type="number"
-                                value={formData.max_redirects || ''}
-                                onChange={handleChange}
-                                min={0}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="edit-accepted_status_codes">Accepted Status Codes</Label>
-                        <Input
-                            id="edit-accepted_status_codes"
-                            name="accepted_statuses" // Match backend field name if different
-                            value={formData.accepted_statuses || ''}
-                            onChange={handleChange}
-                            placeholder="200-299,301,302"
-                        />
-                        <p className="text-sm text-gray-500">
-                            Comma-separated list of status codes or ranges (e.g., 200-299,301,302)
-                        </p>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                         <Checkbox
-                            id="edit-follow_redirects"
-                            name="follow_redirects"
-                            checked={formData.follow_redirects}
-                            onCheckedChange={handleCheckboxChange} // Use onCheckedChange for shadcn Checkbox
-                        />
-                        <Label htmlFor="edit-follow_redirects">Follow Redirects</Label>
-                    </div>
-
-                    <DialogFooter className="pt-4">
-                        <Button type="button" variant="outline" onClick={onClose}>
-                            Cancel
-                        </Button>
-                        <Button type="submit">Save Changes</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <WebsiteForm
+            key={formKey} // Force re-render when websiteToEdit changes
+            open={open}
+            onOpenChange={onClose}
+            onSubmit={handleUpdateWebsite}
+            isEditing={true}
+            initialValues={initialFormValues}
+        />
     );
 };
 

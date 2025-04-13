@@ -25,29 +25,41 @@ apiClient.interceptors.request.use(
 
 // Define interfaces based on backend models/API responses
 // These might need adjustments based on the actual API output
+export interface MonitorConfig {
+  verifySSL?: boolean;
+  expiryThreshold?: number;
+  keyword?: string;
+  caseSensitive?: boolean;
+}
+
 export interface Website {
-  id: number; // Changed from string to number based on backend
+  id: number;
   name: string;
   url: string;
-  type: string; // Added type
+  monitorType: 'http' | 'https' | 'keyword';
+  monitorConfig?: MonitorConfig;
   interval?: number;
-  description?: string; // Added description
-  tags?: { id: number; name: string; color?: string }[]; // Added tags
-  active: boolean; // Added active status
-  hostname?: string; // Added hostname
-  port?: number; // Added port
+  description?: string;
+  tags?: { id: number; name: string; color?: string }[];
+  active: boolean;
+  hostname?: string;
+  port?: number;
   timeout_ms?: number;
   follow_redirects?: boolean;
   max_redirects?: number;
   accepted_statuses?: string;
   retry_count?: number;
-  // Fields populated by checks/stats API
   is_up?: boolean;
   last_check_time?: string;
   last_status_code?: number;
   last_response_time?: number;
   last_error?: string;
-  // Add other fields returned by GET /api/websites/:id if needed
+  certInfo?: {
+    valid: boolean;
+    expires: string;
+    issuer: string;
+    daysUntilExpiration: number;
+  };
 }
 
 export interface Heartbeat {

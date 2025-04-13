@@ -1,6 +1,8 @@
 const Website = require('../models/Website');
 const { performCheck } = require('../monitoring/checker');
-const { updateWebsiteStatus, insertCheckHistory } = require('../database/db'); // Import db functions
+const { updateWebsiteStatus, insertCheckHistory } = require('../database/db');
+
+const VALID_MONITOR_TYPES = ['http', 'https', 'keyword'];
 
 class WebsiteController {
     /**
@@ -13,7 +15,8 @@ class WebsiteController {
             // Add user ID from authenticated session
             const data = {
                 ...req.body,
-                user_id: req.user.id
+                user_id: req.user.id,
+                monitor_type: req.body.monitorType || 'http'
             };
 
             // Validate required fields
@@ -21,6 +24,29 @@ class WebsiteController {
                 return res.status(400).json({
                     error: 'Name and URL are required'
                 });
+            }
+
+            // Validate monitor type
+            if (!VALID_MONITOR_TYPES.includes(data.monitor_type)) {
+                return res.status(400).json({
+                    error: 'Invalid monitor type'
+                });
+            }
+
+            // Validate monitor-specific configurations
+            if (data.monitor_type === 'https' && data.monitorConfig) {
+                if (typeof data.monitorConfig.expiryThreshold !== 'undefined' &&
+                    (data.monitorConfig.expiryThreshold < 1 || data.monitorConfig.expiryThreshold > 90)) {
+                    return res.status(400).json({
+                        error: 'Certificate expiry threshold must be between 1 and 90 days'
+                    });
+                }
+            }
+
+            // Convert monitor config to match database schema
+            if (data.monitorConfig) {
+                data.monitor_config = data.monitorConfig;
+                delete data.monitorConfig;
             }
 
             // Create website (this now also initializes status row)
@@ -120,8 +146,35 @@ class WebsiteController {
                 });
             }
 
+            const updateData = {
+                ...req.body,
+                monitor_type: req.body.monitorType,
+            };
+
+            // Validate monitor type if being updated
+            if (updateData.monitor_type && !VALID_MONITOR_TYPES.includes(updateData.monitor_type)) {
+                return res.status(400).json({
+                    error: 'Invalid monitor type'
+                });
+            }
+
+            // Validate monitor-specific configurations
+            if (updateData.monitorConfig) {
+                if (updateData.monitor_type === 'https' && 
+                    typeof updateData.monitorConfig.expiryThreshold !== 'undefined' &&
+                    (updateData.monitorConfig.expiryThreshold < 1 || updateData.monitorConfig.expiryThreshold > 90)) {
+                    return res.status(400).json({
+                        error: 'Certificate expiry threshold must be between 1 and 90 days'
+                    });
+                }
+
+                // Convert monitor config to match database schema
+                updateData.monitor_config = updateData.monitorConfig;
+                delete updateData.monitorConfig;
+            }
+
             // Update website
-            const updatedWebsite = await Website.update(req.params.id, req.body);
+            const updatedWebsite = await Website.update(req.params.id, updateData);
             res.json(updatedWebsite);
         } catch (error) {
             console.error('Error updating website:', error);
