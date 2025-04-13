@@ -1,65 +1,107 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { login as authLogin, register as authRegister } from '../services/authService';
+
+interface User {
+    id: number;
+    email: string;
+}
 
 interface AuthContextType {
-  isAuthenticated: boolean;
-  token: string | null;
-  login: (token: string) => void;
-  logout: () => void;
+    user: User | null;
+    token: string | null;
+    isAuthenticated: boolean;
+    isLoading: boolean;
+    login: (email: string, password: string) => Promise<void>;
+    register: (email: string, password: string) => Promise<void>;
+    logout: () => void;
 }
 
-// Create the context with a default value (null!) which will be overridden by the provider
-// Using null! asserts that the context will always be provided before use.
-export const AuthContext = createContext<AuthContextType>(null!);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  // Initialize state from localStorage to persist login across page refreshes
-  const [token, setToken] = useState<string | null>(() => {
-    // Check if running in a browser environment before accessing localStorage
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('authToken');
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [user, setUser] = useState<User | null>(null);
+    // Use 'authToken' key consistent with authService
+    const [token, setToken] = useState<string | null>(localStorage.getItem('authToken'));
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        // Check if user is already logged in
+        const checkAuth = async () => {
+            // Use 'authToken' key consistent with authService
+            const storedToken = localStorage.getItem('authToken');
+            if (storedToken) {
+                try {
+                    // Verify token and get user info
+                    const response = await fetch('/api/auth/me', {
+                        headers: {
+                            'Authorization': `Bearer ${storedToken}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const userData = await response.json();
+                        setUser(userData);
+                        setToken(storedToken);
+                    } else {
+                        // Invalid token
+                        localStorage.removeItem('authToken'); // Use 'authToken' key
+                        setUser(null);
+                        setToken(null);
+                    }
+                } catch (error) {
+                    console.error('Auth check failed:', error);
+                    localStorage.removeItem('authToken'); // Use 'authToken' key
+                    setUser(null);
+                    setToken(null);
+                }
+            }
+            setIsLoading(false);
+        };
+
+        checkAuth();
+    }, []);
+
+    const login = async (email: string, password: string) => {
+        const { user: userData, token: authToken } = await authLogin(email, password);
+        setUser(userData);
+        setToken(authToken);
+        localStorage.setItem('authToken', authToken); // Use 'authToken' key
+    };
+
+    const register = async (email: string, password: string) => {
+        const { user: userData, token: authToken } = await authRegister(email, password);
+        setUser(userData);
+        setToken(authToken);
+        localStorage.setItem('authToken', authToken); // Use 'authToken' key
+    };
+
+    const logout = () => {
+        setUser(null);
+        setToken(null);
+        localStorage.removeItem('authToken'); // Use 'authToken' key
+    };
+
+    const value = {
+        user,
+        token,
+        isAuthenticated: !!token,
+        isLoading,
+        login,
+        register,
+        logout
+    };
+
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>
+    );
+};
+
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error('useAuth must be used within an AuthProvider');
     }
-    return null;
-  });
-
-  const login = (newToken: string) => {
-    if (typeof window !== 'undefined') {
-      setToken(newToken);
-      localStorage.setItem('authToken', newToken);
-      console.log("Token set in localStorage:", newToken); // Debug log
-    }
-  };
-
-  const logout = () => {
-    if (typeof window !== 'undefined') {
-      setToken(null);
-      localStorage.removeItem('authToken');
-      console.log("Token removed from localStorage"); // Debug log
-      // Optionally redirect to login page here or handle in components
-      // window.location.href = '/login'; // Example hard redirect
-    }
-  };
-
-  // The value provided to the context consumers
-  const value = {
-    isAuthenticated: !!token, // True if token is not null or empty
-    token,
-    login,
-    logout
-  };
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-}
-
-// Custom hook to use the auth context easily
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined || context === null) {
-    // This error should ideally not happen if AuthProvider wraps the app correctly
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
+    return context;
+};

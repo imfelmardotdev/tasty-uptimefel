@@ -1,441 +1,237 @@
-import { v4 as uuidv4 } from "uuid";
+import axios from 'axios';
+import { getToken } from './authService'; // Use named import for getToken
 
+// Define the base URL for the API
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'; // Use env var or default
+
+// Create an axios instance
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+});
+
+// Add an interceptor to include the auth token in requests
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = getToken(); // Use the imported function directly
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Define interfaces based on backend models/API responses
+// These might need adjustments based on the actual API output
 export interface Website {
-  id: string;
+  id: number; // Changed from string to number based on backend
   name: string;
   url: string;
-  responseThreshold: number;
-  status?: "up" | "down" | "pending";
-  responseTime?: number;
-  lastChecked?: string;
-  responseCode?: number;
-  uptime?: number; // Percentage of uptime (0-100)
-  incidents?: number; // Number of incidents in the last 24 hours
-  currentDowntime?: string; // How long the site has been down (if applicable)
-  lastIncidentTime?: string; // Timestamp of the last incident
+  type: string; // Added type
+  interval?: number;
+  description?: string; // Added description
+  tags?: { id: number; name: string; color?: string }[]; // Added tags
+  active: boolean; // Added active status
+  hostname?: string; // Added hostname
+  port?: number; // Added port
+  timeout_ms?: number;
+  follow_redirects?: boolean;
+  max_redirects?: number;
+  accepted_statuses?: string;
+  retry_count?: number;
+  // Fields populated by checks/stats API
+  is_up?: boolean;
+  last_check_time?: string;
+  last_status_code?: number;
+  last_response_time?: number;
+  last_error?: string;
+  // Add other fields returned by GET /api/websites/:id if needed
 }
 
-export interface Alert {
-  id: string;
-  websiteId: string;
-  websiteName: string;
-  url: string;
-  timestamp: string;
-  duration: number; // in seconds
-  type: "down" | "slow";
-  responseTime?: number; // in ms
-  responseCode?: number;
-  resolved: boolean;
+export interface Heartbeat {
+  // Assuming backend returns these fields for /heartbeats endpoint
+  id: number; // Added id
+  website_id: number; // Added website_id
+  timestamp: string | Date;
+  status: number;
+  ping?: number | null;
+  message?: string | null;
+  // id and website_id might not be needed directly in frontend for bar
 }
 
-// Use a CORS proxy to bypass cross-origin restrictions
-const CORS_PROXY = "https://corsproxy.io/?";
+export interface MonitorStatsSummary {
+  // Assuming backend returns these for /summary endpoint
+  currentPing?: number | null;
+  avgPing24h?: number | null;
+  uptime24h?: number;
+  uptime30d?: number;
+  uptime1y?: number;
+  certExpiryDays?: number | null;
+  certIssuer?: string | null;
+  certValidTo?: string | null;
+  isCertValid?: boolean | null;
+}
 
-class MonitoringService {
-  private websites: Website[] = [];
-  private alerts: Alert[] = [];
-  private checkInterval: number = 60000; // 1 minute in ms
-  private intervalId: number | null = null;
-  private listeners: { [key: string]: Function[] } = {
-    websitesUpdated: [],
-    alertsUpdated: [],
-  };
+export interface ImportantEvent {
+   // Assuming backend returns these for /events endpoint
+   id: number;
+   timestamp: string | Date;
+   status: number;
+   message?: string | null;
+}
 
-  constructor() {
-    this.loadFromStorage();
-  }
+export interface ChartDataPoint {
+    // Assuming backend returns these for /chart endpoint
+    timestamp: number; // Unix timestamp
+    avgPing?: number | null;
+    up?: number;
+    down?: number;
+    maintenance?: number;
+}
 
-  // Initialize the monitoring service
-  public init(): void {
-    this.loadFromStorage();
-    this.startMonitoring();
-  }
 
-  // Start the monitoring interval
-  public startMonitoring(): void {
-    if (this.intervalId) return;
-
-    // Immediately check all websites
-    this.checkAllWebsites();
-
-    // Then set up interval for regular checks
-    this.intervalId = window.setInterval(() => {
-      this.checkAllWebsites();
-    }, this.checkInterval);
-  }
-
-  // Stop the monitoring interval
-  public stopMonitoring(): void {
-    if (this.intervalId) {
-      window.clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-  }
-
-  // Add a new website to monitor
-  public addWebsite(
-    website: Omit<Website, "id" | "status" | "responseTime" | "lastChecked">,
-  ): Website {
-    if (this.websites.length >= 5) {
-      throw new Error("Maximum of 5 websites can be monitored");
-    }
-
-    const newWebsite: Website = {
-      id: uuidv4(),
-      ...website,
-      status: "pending",
-      responseTime: 0,
-      lastChecked: new Date().toISOString(),
-    };
-
-    this.websites.push(newWebsite);
-    this.saveToStorage();
-    this.notifyListeners("websitesUpdated");
-
-    // Check the new website immediately
-    this.checkWebsite(newWebsite.id);
-
-    return newWebsite;
-  }
-
-  // Update an existing website
-  public updateWebsite(
-    id: string,
-    updates: Partial<Omit<Website, "id">>,
-  ): Website {
-    const index = this.websites.findIndex((w) => w.id === id);
-    if (index === -1) throw new Error("Website not found");
-
-    this.websites[index] = { ...this.websites[index], ...updates };
-    this.saveToStorage();
-    this.notifyListeners("websitesUpdated");
-
-    // Check the updated website immediately
-    this.checkWebsite(id);
-
-    return this.websites[index];
-  }
-
-  // Remove a website from monitoring
-  public removeWebsite(id: string): void {
-    this.websites = this.websites.filter((w) => w.id !== id);
-    this.saveToStorage();
-    this.notifyListeners("websitesUpdated");
-  }
-
-  // Get all monitored websites
-  public getWebsites(): Website[] {
-    return [...this.websites];
-  }
-
-  // Get a specific website by ID
-  public getWebsite(id: string): Website | undefined {
-    return this.websites.find((w) => w.id === id);
-  }
-
-  // Get all alerts
-  public getAlerts(): Alert[] {
-    return [...this.alerts];
-  }
-
-  // Clear all alerts
-  public clearAlerts(): void {
-    this.alerts = [];
-    this.saveToStorage();
-    this.notifyListeners("alertsUpdated");
-  }
-
-  // Check the status of all websites
-  private async checkAllWebsites(): Promise<void> {
-    const checkPromises = this.websites.map((website) =>
-      this.checkWebsite(website.id),
-    );
-    await Promise.all(checkPromises);
-  }
-
-  // Check the status of a specific website
-  private async checkWebsite(id: string): Promise<void> {
-    const website = this.websites.find((w) => w.id === id);
-    if (!website) return;
-
-    const startTime = Date.now();
-    const now = new Date().toISOString();
-
+const monitoringService = {
+  // --- Website CRUD ---
+  async getWebsites(): Promise<Website[]> {
     try {
-      // Use the CORS proxy to make the request
-      const proxyUrl = `${CORS_PROXY}${encodeURIComponent(website.url)}`;
+      const response = await apiClient.get<Website[]>('/websites'); // Assuming GET /api/websites
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching websites:', error);
+      throw error; // Re-throw to be handled by the caller
+    }
+  },
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+  async getWebsite(id: number): Promise<Website> {
+    try {
+      const response = await apiClient.get<Website>(`/websites/${id}`); // Assuming GET /api/websites/:id
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching website ${id}:`, error);
+      throw error;
+    }
+  },
 
-      const response = await fetch(proxyUrl, {
-        method: "GET",
-        mode: "cors",
-        signal: controller.signal,
-        headers: {
-          Accept: "text/html",
-        },
+  async addWebsite(websiteData: Omit<Website, 'id'>): Promise<Website> {
+    try {
+      const response = await apiClient.post<Website>('/websites', websiteData); // Assuming POST /api/websites
+      return response.data;
+    } catch (error) {
+      console.error('Error adding website:', error);
+      throw error;
+    }
+  },
+
+  async updateWebsite(id: number, websiteData: Partial<Omit<Website, 'id'>>): Promise<Website> {
+    try {
+      const response = await apiClient.put<Website>(`/websites/${id}`, websiteData); // Assuming PUT /api/websites/:id
+      return response.data;
+    } catch (error) {
+      console.error(`Error updating website ${id}:`, error);
+      throw error;
+    }
+  },
+
+  async deleteWebsite(id: number): Promise<void> {
+    try {
+      await apiClient.delete(`/websites/${id}`); // Assuming DELETE /api/websites/:id
+    } catch (error) {
+      console.error(`Error deleting website ${id}:`, error);
+      throw error;
+    }
+  },
+
+  async checkWebsiteNow(id: number): Promise<void> {
+     try {
+       // Assuming an endpoint exists to trigger an immediate check
+       await apiClient.post(`/websites/${id}/check`);
+     } catch (error) {
+       console.error(`Error triggering check for website ${id}:`, error);
+       throw error;
+     }
+   },
+
+  // --- Stats & Heartbeats ---
+  async getRecentHeartbeats(monitorId: number, limit: number = 100): Promise<Heartbeat[]> {
+    try {
+      const response = await apiClient.get<Heartbeat[]>(`/stats/monitor/${monitorId}/heartbeats`, {
+        params: { limit },
       });
-
-      clearTimeout(timeoutId);
-
-      const responseTime = Date.now() - startTime;
-      const previousStatus = website.status;
-      const newStatus = response.ok ? "up" : "down";
-
-      // Calculate incidents in the last 24 hours
-      const last24Hours = new Date(
-        Date.now() - 24 * 60 * 60 * 1000,
-      ).toISOString();
-      const incidentsLast24Hours = this.alerts.filter(
-        (alert) => alert.websiteId === id && alert.timestamp >= last24Hours,
-      ).length;
-
-      // Calculate uptime percentage (simplified calculation)
-      // In a real app, this would be based on actual monitoring data over time
-      const uptime = this.calculateUptime(id);
-
-      // Calculate current downtime if site is down
-      let currentDowntime = "";
-      if (newStatus === "down") {
-        const lastUpAlert = this.alerts.find(
-          (alert) =>
-            alert.websiteId === id && alert.type === "down" && !alert.resolved,
-        );
-        if (lastUpAlert) {
-          const downSince = new Date(lastUpAlert.timestamp);
-          const downtimeMs = Date.now() - downSince.getTime();
-          const hours = Math.floor(downtimeMs / (1000 * 60 * 60));
-          const minutes = Math.floor(
-            (downtimeMs % (1000 * 60 * 60)) / (1000 * 60),
-          );
-          const seconds = Math.floor((downtimeMs % (1000 * 60)) / 1000);
-          currentDowntime = `${hours}h ${minutes}m ${seconds}s`;
-        }
-      }
-
-      // Get last incident time
-      const lastIncident = this.alerts.find((alert) => alert.websiteId === id);
-      const lastIncidentTime = lastIncident ? lastIncident.timestamp : null;
-
-      // Update the website status
-      const updatedWebsite: Website = {
-        ...website,
-        status: newStatus,
-        responseTime,
-        lastChecked: now,
-        responseCode: response.status,
-        uptime,
-        incidents: incidentsLast24Hours,
-        currentDowntime: currentDowntime || undefined,
-        lastIncidentTime: lastIncidentTime || undefined,
-      };
-
-      const index = this.websites.findIndex((w) => w.id === id);
-      this.websites[index] = updatedWebsite;
-
-      // Check if we need to create an alert
-      if (previousStatus === "up" && newStatus === "down") {
-        this.createAlert(updatedWebsite, "down");
-      } else if (responseTime > website.responseThreshold) {
-        this.createAlert(updatedWebsite, "slow");
-      }
-
-      // Check if we need to resolve an alert
-      if (previousStatus === "down" && newStatus === "up") {
-        this.resolveAlerts(id);
-      }
-
-      this.saveToStorage();
-      this.notifyListeners("websitesUpdated");
+      return response.data;
     } catch (error) {
-      // Handle network errors or timeouts
-      // Calculate incidents in the last 24 hours
-      const last24Hours = new Date(
-        Date.now() - 24 * 60 * 60 * 1000,
-      ).toISOString();
-      const incidentsLast24Hours = this.alerts.filter(
-        (alert) => alert.websiteId === id && alert.timestamp >= last24Hours,
-      ).length;
-
-      // Calculate uptime percentage
-      const uptime = this.calculateUptime(id);
-
-      // Calculate current downtime
-      let currentDowntime = "";
-      const lastUpAlert = this.alerts.find(
-        (alert) =>
-          alert.websiteId === id && alert.type === "down" && !alert.resolved,
-      );
-      if (lastUpAlert) {
-        const downSince = new Date(lastUpAlert.timestamp);
-        const downtimeMs = Date.now() - downSince.getTime();
-        const hours = Math.floor(downtimeMs / (1000 * 60 * 60));
-        const minutes = Math.floor(
-          (downtimeMs % (1000 * 60 * 60)) / (1000 * 60),
-        );
-        const seconds = Math.floor((downtimeMs % (1000 * 60)) / 1000);
-        currentDowntime = `${hours}h ${minutes}m ${seconds}s`;
-      }
-
-      // Get last incident time
-      const lastIncident = this.alerts.find((alert) => alert.websiteId === id);
-      const lastIncidentTime = lastIncident ? lastIncident.timestamp : null;
-
-      const updatedWebsite: Website = {
-        ...website,
-        status: "down",
-        responseTime: 0,
-        lastChecked: now,
-        responseCode: 0,
-        uptime,
-        incidents: incidentsLast24Hours,
-        currentDowntime: currentDowntime || undefined,
-        lastIncidentTime: lastIncidentTime || undefined,
-      };
-
-      const index = this.websites.findIndex((w) => w.id === id);
-      this.websites[index] = updatedWebsite;
-
-      // Create a down alert if the website was previously up
-      if (website.status === "up") {
-        this.createAlert(updatedWebsite, "down");
-      }
-
-      this.saveToStorage();
-      this.notifyListeners("websitesUpdated");
+      console.error(`Error fetching recent heartbeats for monitor ${monitorId}:`, error);
+      throw error;
     }
-  }
+  },
 
-  // Create a new alert for a website
-  private createAlert(website: Website, type: "down" | "slow"): void {
-    const alert: Alert = {
-      id: uuidv4(),
-      websiteId: website.id,
-      websiteName: website.name,
-      url: website.url,
-      timestamp: new Date().toISOString(),
-      duration: 0, // Will be updated when resolved
-      type,
-      responseTime: website.responseTime,
-      responseCode: website.responseCode,
-      resolved: false,
-    };
-
-    this.alerts.unshift(alert); // Add to the beginning of the array
-    this.saveToStorage();
-    this.notifyListeners("alertsUpdated");
-  }
-
-  // Calculate uptime percentage for a website
-  private calculateUptime(websiteId: string): number {
-    // In a real app, this would be based on actual monitoring data over time
-    // For this demo, we'll use a simplified calculation based on alerts
-    const last7Days = new Date(
-      Date.now() - 7 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    const alerts = this.alerts.filter(
-      (alert) => alert.websiteId === websiteId && alert.timestamp >= last7Days,
-    );
-
-    if (alerts.length === 0) return 100; // No alerts means 100% uptime
-
-    // Calculate total downtime in seconds
-    let totalDowntimeSeconds = 0;
-    alerts.forEach((alert) => {
-      if (alert.type === "down") {
-        totalDowntimeSeconds += alert.resolved
-          ? alert.duration
-          : Math.floor(
-              (Date.now() - new Date(alert.timestamp).getTime()) / 1000,
-            );
-      }
-    });
-
-    // Calculate uptime percentage (7 days = 604800 seconds)
-    const totalSeconds = 7 * 24 * 60 * 60; // 7 days in seconds
-    const uptimePercentage = 100 - (totalDowntimeSeconds / totalSeconds) * 100;
-
-    return Math.max(0, Math.min(100, parseFloat(uptimePercentage.toFixed(3))));
-  }
-
-  // Resolve all active alerts for a website
-  private resolveAlerts(websiteId: string): void {
-    const now = new Date();
-
-    this.alerts = this.alerts.map((alert) => {
-      if (alert.websiteId === websiteId && !alert.resolved) {
-        const alertTime = new Date(alert.timestamp);
-        const durationSeconds = Math.floor(
-          (now.getTime() - alertTime.getTime()) / 1000,
-        );
-
-        return {
-          ...alert,
-          resolved: true,
-          duration: durationSeconds,
-        };
-      }
-      return alert;
-    });
-
-    this.saveToStorage();
-    this.notifyListeners("alertsUpdated");
-  }
-
-  // Save the current state to localStorage
-  private saveToStorage(): void {
-    localStorage.setItem("monitoredWebsites", JSON.stringify(this.websites));
-    localStorage.setItem("websiteAlerts", JSON.stringify(this.alerts));
-  }
-
-  // Load the state from localStorage
-  private loadFromStorage(): void {
+  async getMonitorStats(monitorId: number): Promise<MonitorStatsSummary> {
     try {
-      const websitesJson = localStorage.getItem("monitoredWebsites");
-      const alertsJson = localStorage.getItem("websiteAlerts");
-
-      if (websitesJson) {
-        this.websites = JSON.parse(websitesJson);
-      }
-
-      if (alertsJson) {
-        this.alerts = JSON.parse(alertsJson);
-      }
+      const response = await apiClient.get<MonitorStatsSummary>(`/stats/monitor/${monitorId}/summary`);
+      return response.data;
     } catch (error) {
-      console.error("Error loading from localStorage:", error);
+      console.error(`Error fetching stats summary for monitor ${monitorId}:`, error);
+      throw error;
     }
-  }
+  },
 
-  // Subscribe to updates
-  public subscribe(
-    event: "websitesUpdated" | "alertsUpdated",
-    callback: Function,
-  ): void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
-    this.listeners[event].push(callback);
-  }
+  async getImportantEvents(monitorId: number, limit: number = 50): Promise<ImportantEvent[]> {
+     try {
+       const response = await apiClient.get<ImportantEvent[]>(`/stats/monitor/${monitorId}/events`, {
+         params: { limit },
+       });
+       return response.data;
+     } catch (error) {
+       console.error(`Error fetching important events for monitor ${monitorId}:`, error);
+       throw error;
+     }
+   },
 
-  // Unsubscribe from updates
-  public unsubscribe(
-    event: "websitesUpdated" | "alertsUpdated",
-    callback: Function,
-  ): void {
-    if (!this.listeners[event]) return;
-    this.listeners[event] = this.listeners[event].filter(
-      (cb) => cb !== callback,
-    );
-  }
+   async getChartData(monitorId: number, period: string = '24h'): Promise<ChartDataPoint[]> {
+     try {
+       const response = await apiClient.get<ChartDataPoint[]>(`/stats/monitor/${monitorId}/chart`, {
+         params: { period },
+       });
+       return response.data;
+     } catch (error) {
+       console.error(`Error fetching chart data for monitor ${monitorId} (${period}):`, error);
+       throw error;
+     }
+   },
 
-  // Notify all listeners of an event
-  private notifyListeners(event: string): void {
-    if (!this.listeners[event]) return;
-    this.listeners[event].forEach((callback) => callback());
-  }
-}
+  // --- Listener pattern (optional, for WebSocket integration later) ---
+  // listeners: { [key: string]: Function[] } = {
+  //   monitorUpdate: [], // Example event name
+  // },
 
-// Create a singleton instance
-const monitoringService = new MonitoringService();
+  // subscribe(event: string, callback: Function): void {
+  //   if (!this.listeners[event]) {
+  //     this.listeners[event] = [];
+  //   }
+  //   this.listeners[event].push(callback);
+  //   // TODO: Initialize WebSocket connection if this is the first subscriber?
+  // },
+
+  // unsubscribe(event: string, callback: Function): void {
+  //   if (!this.listeners[event]) return;
+  //   this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+  //   // TODO: Close WebSocket connection if no listeners left?
+  // },
+
+  // notifyListeners(event: string, data: any): void {
+  //   if (!this.listeners[event]) return;
+  //   this.listeners[event].forEach(callback => {
+  //     try {
+  //       callback(data);
+  //     } catch (error) {
+  //       console.error(`Error in listener for event ${event}:`, error);
+  //     }
+  //   });
+  // },
+
+  // TODO: Setup WebSocket connection and message handling
+  // setupWebSocket() { ... }
+};
+
 export default monitoringService;

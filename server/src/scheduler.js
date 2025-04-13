@@ -1,56 +1,73 @@
-const cron = require('node-cron');
-const db = require('./database/db');
+const Website = require('./models/Website');
 const { performCheck } = require('./monitoring/checker');
-const { triggerWebhookAlert } = require('./alerting/webhook');
+const { getAllWebsites, updateWebsiteStatus, insertCheckHistory } = require('./database/db'); // Import getAllWebsites from db
 
-// Schedule to run every 10 minutes
-const scheduleCheck = () => {
-  console.log('Scheduler started. Checks will run every 10 minutes.');
-  cron.schedule('*/10 * * * *', async () => {
-    console.log(`[${new Date().toISOString()}] Running scheduled checks...`);
+let monitoringInterval;
+
+const checkWebsites = async () => {
     try {
-      const websites = await db.getAllWebsites();
-      console.log(`Found ${websites.length} website(s) to check.`);
+        // Get all websites using the db function
+        const websites = await getAllWebsites(); 
+        
+        // Check each website
+        for (const website of websites) {
+            try {
+                // Check if it's time to monitor this website
+                const lastCheck = new Date(website.last_check_time || 0);
+                const now = new Date();
+                const timeSinceLastCheck = now.getTime() - lastCheck.getTime();
+                const intervalMs = (website.check_interval || 300) * 1000; // Use default if null
 
-      if (websites.length === 0) {
-        console.log('No websites configured. Skipping checks.');
-        return;
-      }
+                // Check if active AND check_interval has passed since last check
+                // Assuming 'active' column exists and is 1 for active, 0 for paused
+                if (website.active === 1 && timeSinceLastCheck >= intervalMs) {
+                    console.log(`Checking website: ${website.name} (${website.url})`);
 
-      // Process checks sequentially for now to avoid overwhelming DB connections
-      // Can be parallelized later with connection pooling or Promise.allSettled
-      for (const website of websites) {
-        console.log(`Checking ${website.name || website.url}...`);
-        const latestCheck = await db.getLatestCheck(website.id);
-        const previousStatus = latestCheck ? latestCheck.is_up : null; // null if no previous check
-
-        const checkResult = await performCheck(website);
-        await db.insertCheck(
-          checkResult.websiteId,
-          checkResult.statusCode,
-          checkResult.responseTimeMs,
-          checkResult.isUp
-        );
-        console.log(`Check complete for ${website.url}. Status: ${checkResult.isUp ? 'UP' : 'DOWN'}, Code: ${checkResult.statusCode}, Time: ${checkResult.responseTimeMs}ms`);
-
-        // Check for status change and trigger alert if needed
-        if (previousStatus !== null && previousStatus !== checkResult.isUp) {
-          console.log(`Status change detected for ${website.url}!`);
-          await triggerWebhookAlert(website, checkResult, previousStatus);
-        } else if (previousStatus === null) {
-            console.log(`First check for ${website.url}, initial status: ${checkResult.isUp ? 'UP' : 'DOWN'}`);
-            // Optionally trigger an alert on the first check result?
-            // await triggerWebhookAlert(website, checkResult, previousStatus);
+                    // Perform the check
+                    const result = await performCheck(website);
+                    
+                    // Update status and history using db functions
+                    await updateWebsiteStatus({ ...result, websiteId: website.id });
+                    await insertCheckHistory({ ...result, websiteId: website.id });
+                }
+            } catch (error) {
+                console.error(`Error checking website ${website.name}:`, error);
+            }
         }
-      }
-      console.log('Scheduled checks finished.');
-
     } catch (error) {
-      console.error('Error during scheduled checks:', error);
+        console.error('Error in monitoring loop:', error);
     }
-  });
 };
 
+const startMonitoring = () => {
+    // Run initial check
+    checkWebsites();
+    
+    // Set up interval (every minute)
+    monitoringInterval = setInterval(checkWebsites, 60 * 1000);
+    
+    console.log('Website monitoring started');
+};
+
+const stopMonitoring = () => {
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+        console.log('Website monitoring stopped');
+    }
+};
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+    stopMonitoring();
+});
+
+process.on('SIGINT', () => {
+    stopMonitoring();
+});
+
 module.exports = {
-  scheduleCheck,
+    startMonitoring,
+    stopMonitoring,
+    checkWebsites
 };

@@ -1,22 +1,16 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App.tsx";
-import "./index.css";
-import { BrowserRouter } from "react-router-dom";
-import { AuthProvider } from "./contexts/AuthContext"; // Import AuthProvider
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { BrowserRouter as Router } from 'react-router-dom'; // Import Router here
+import App from './App.tsx'
+import './index.css'
+import { AuthProvider } from './contexts/AuthContext.tsx';
 
-import { TempoDevtools } from "tempo-devtools";
-TempoDevtools.init();
-
-const basename = import.meta.env.BASE_URL;
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {/* Wrap BrowserRouter with AuthProvider */}
-    <AuthProvider>
-      <BrowserRouter basename={basename}>
+    <Router> {/* Wrap the entire app with Router here */}
+      <AuthProvider>
         <App />
-      </BrowserRouter>
-    </AuthProvider>
+      </AuthProvider>
+    </Router>
   </React.StrictMode>,
-);
+)

@@ -44,4 +44,5 @@ core
 
 .github/
 
-/uptime-kuma-reference
+# Ignore Uptime Kuma reference directory
+uptime-kuma-reference/

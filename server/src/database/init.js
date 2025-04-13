@@ -1,81 +1,63 @@
 require('dotenv').config();
 const sqlite3 = require('sqlite3').verbose();
+const MigrationRunner = require('./migration-runner');
 
 const dbPath = process.env.DATABASE_PATH || './monitoring.db';
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Error opening database:', err.message);
-  } else {
-    console.log(`Connected to the SQLite database at ${dbPath}`);
-    createTables();
-  }
-});
+let db = null;
 
-function createTables() {
-  db.serialize(() => {
-    // Websites table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS websites (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        url TEXT NOT NULL UNIQUE,
-        name TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `, (err) => {
-      if (err) {
-        console.error('Error creating websites table:', err.message);
-      } else {
-        console.log('Table "websites" created or already exists.');
-      }
-    });
+/**
+ * Initializes the database and runs any pending migrations
+ * @returns {Promise<void>}
+ */
+async function initializeDatabase() {
+    console.log('Initializing database...');
 
-    // Checks table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS checks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        website_id INTEGER NOT NULL,
-        status_code INTEGER,
-        response_time_ms INTEGER,
-        is_up BOOLEAN,
-        checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (website_id) REFERENCES websites (id) ON DELETE CASCADE
-      )
-    `, (err) => {
-      if (err) {
-        console.error('Error creating checks table:', err.message);
-      } else {
-        console.log('Table "checks" created or already exists.');
-      }
-    });
+    // Run migrations first
+    const migrationRunner = new MigrationRunner(dbPath);
+    try {
+        await migrationRunner.runMigrations();
+        await migrationRunner.close();
+        console.log('Database migrations completed.');
+    } catch (error) {
+        console.error('Database migration failed:', error);
+        process.exit(1);
+    }
 
-    // Users table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `, (err) => {
+    // Create the shared database connection
+    db = new sqlite3.Database(dbPath, (err) => {
         if (err) {
-            console.error('Error creating users table:', err.message);
-        } else {
-            console.log('Table "users" created or already exists.');
+            console.error('Error connecting to database:', err.message);
+            process.exit(1);
         }
+        console.log(`Connected to SQLite database at ${dbPath}`);
     });
 
-    // Close the database connection after table creation attempts
-    db.close((err) => {
-      if (err) {
-        console.error('Error closing database:', err.message);
-      } else {
-        console.log('Database connection closed.');
-      }
+    // Enable foreign keys
+    db.run('PRAGMA foreign_keys = ON');
+
+    // Handle connection errors
+    db.on('error', (err) => {
+        console.error('Database error:', err.message);
     });
-  });
 }
 
-// Handle potential errors during connection
-db.on('error', (err) => {
-  console.error('Database error:', err.message);
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+    if (db) {
+        db.close((err) => {
+            if (err) {
+                console.error('Error closing database:', err.message);
+            } else {
+                console.log('Database connection closed.');
+            }
+            process.exit(0);
+        });
+    } else {
+        process.exit(0);
+    }
 });
+
+module.exports = {
+    initializeDatabase,
+    getDatabase: () => db
+};

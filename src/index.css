@@ -33,6 +33,12 @@
       --ring: 222.2 84% 4.9%;
 
       --radius: 0.5rem;
+
+      /* Status Colors */
+      --color-primary: 142.1 76.2% 36.3%; /* shadcn green-600 */
+      --color-danger: 0 84.2% 60.2%; /* Same as --destructive */
+      --color-warning: 38.9 92.1% 50.8%; /* shadcn yellow-500 */
+      --color-maintenance: 221.2 83.2% 53.3%; /* shadcn blue-500 */
     }
 
     .dark {
@@ -63,6 +69,12 @@
       --border: 217.2 32.6% 17.5%;
       --input: 217.2 32.6% 17.5%;
       --ring: 212.7 26.8% 83.9%;
+
+      /* Status Colors (Dark) */
+      --color-primary: 142.1 70.6% 45.3%; /* shadcn green-500 */
+      --color-danger: 0 72.2% 50.6%; /* shadcn red-600 */
+      --color-warning: 47.9 91.6% 54.1%; /* shadcn yellow-400 */
+      --color-maintenance: 217.2 91.2% 59.8%; /* shadcn blue-400 */
     }
   }
 

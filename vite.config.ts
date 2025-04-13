@@ -1,22 +1,23 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
+import path from "path"
+import react from "@vitejs/plugin-react"
+import { defineConfig } from "vite"
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  base: process.env.NODE_ENV === "development" ? "/" : process.env.VITE_BASE_PATH || "/",
-  server: {
-    port: 5173,
-    strictPort: true,
-  },
-  // Remove unused optimizeDeps config since we're not using tempo
-  plugins: [
-    react(),
-  ],
+  plugins: [react()],
   resolve: {
-    preserveSymlinks: true,
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
-});
+  server: {
+    port: 5173,
+    proxy: {
+      // Proxy API requests to the backend server
+      '/api': {
+        target: 'http://localhost:3001', // Your backend server address
+        changeOrigin: true,
+        // rewrite: (path) => path.replace(/^\/api/, '') // Optional: remove /api prefix if backend doesn't expect it
+      },
+    },
+  },
+})

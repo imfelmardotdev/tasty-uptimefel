@@ -2,19 +2,37 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 // Import the specific functions needed from db.js
-const { findUserByEmail, createUser } = require('../database/db');
+const { findUserByEmail, createUser, findUserById } = require('../database/db');
 
 const router = express.Router();
 const saltRounds = 10; // For bcrypt hashing
 const jwtSecret = process.env.JWT_SECRET || 'your-very-secure-secret'; // Use env var in production!
 const jwtExpiresIn = '1h'; // Token expiration time
 
+// --- Middleware ---
+/**
+ * Middleware to authenticate JWT token
+ */
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+    if (token == null) {
+        return res.sendStatus(401); // if there isn't any token
+    }
+
+    jwt.verify(token, jwtSecret, (err, user) => {
+        if (err) {
+            return res.sendStatus(403); // Invalid token
+        }
+        req.user = { id: user.userId, email: user.email }; // Add user payload to request
+        next();
+    });
+};
 
 // --- Routes ---
-// Helper functions are now imported from db.js
 
-// POST /api/auth/register - Register a new user (e.g., first admin)
-// In a real app, you might want to restrict this or have an invitation system
+// POST /api/auth/register - Register a new user
 router.post('/register', async (req, res) => {
   const { email, password } = req.body;
 
@@ -22,12 +40,12 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  // Basic email format validation (can be improved)
+  // Basic email format validation
   if (!/\S+@\S+\.\S+/.test(email)) {
       return res.status(400).json({ error: 'Invalid email format' });
   }
 
-  // Basic password strength (example: min 8 chars)
+  // Basic password strength
   if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters long' });
   }
@@ -45,7 +63,15 @@ router.post('/register', async (req, res) => {
     // Create user in the database
     const newUser = await createUser(email, passwordHash);
 
-    res.status(201).json({ message: 'User registered successfully', userId: newUser.id });
+    // Generate JWT for the new user
+    const payload = { userId: newUser.id, email: newUser.email };
+    const token = jwt.sign(payload, jwtSecret, { expiresIn: jwtExpiresIn });
+
+    res.status(201).json({ 
+        message: 'User registered successfully', 
+        user: { id: newUser.id, email: newUser.email },
+        token 
+    });
 
   } catch (error) {
     console.error('Registration error:', error);
@@ -83,7 +109,11 @@ router.post('/login', async (req, res) => {
     const payload = { userId: user.id, email: user.email };
     const token = jwt.sign(payload, jwtSecret, { expiresIn: jwtExpiresIn });
 
-    res.json({ message: 'Login successful', token });
+    res.json({ 
+        message: 'Login successful', 
+        user: { id: user.id, email: user.email },
+        token 
+    });
 
   } catch (error) {
     console.error('Login error:', error);
@@ -91,4 +121,23 @@ router.post('/login', async (req, res) => {
   }
 });
 
-module.exports = router;
+// GET /api/auth/me - Get current user info based on token
+router.get('/me', authenticateToken, async (req, res) => {
+    try {
+        // req.user is populated by authenticateToken middleware
+        const user = await findUserById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        // Return only necessary user info
+        res.json({ id: user.id, email: user.email });
+    } catch (error) {
+        console.error('Error fetching user data:', error);
+        res.status(500).json({ error: 'Failed to fetch user data' });
+    }
+});
+
+module.exports = {
+    authRouter: router,
+    authenticateToken
+};

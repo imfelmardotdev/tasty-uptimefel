@@ -1,55 +1,69 @@
-// Base URL from environment variables
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const API_BASE_URL = `${API_URL}/api/auth`;
-
-interface LoginResponse {
-  message: string;
-  token: string;
+interface AuthResponse {
+    user: {
+        id: number;
+        email: string;
+    };
+    token: string;
 }
 
-interface ApiError {
-  error: string;
-}
+export const login = async (email: string, password: string): Promise<AuthResponse> => {
+    const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+    });
 
-export const loginUser = async (email: string, password: string): Promise<LoginResponse> => {
-  console.log('Attempting login with URL:', `${API_BASE_URL}/login`);
-  
-  const response = await fetch(`${API_BASE_URL}/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include', // Changed to include for cross-origin requests
-    body: JSON.stringify({ email, password }),
-  });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Login failed');
+    }
 
-  const data: LoginResponse | ApiError = await response.json();
-
-  if (!response.ok) {
-    // Throw an error with the message from the API response
-    throw new Error((data as ApiError).error || `HTTP error! status: ${response.status}`);
-  }
-
-  return data as LoginResponse;
+    return response.json();
 };
 
-// Optional: Add registerUser function if needed later
-/*
-export const registerUser = async (email: string, password: string): Promise<{ message: string; userId: number }> => {
-  const response = await fetch(`${API_BASE_URL}/register`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ email, password }),
-  });
+export const register = async (email: string, password: string): Promise<AuthResponse> => {
+    const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+    });
 
-  const data = await response.json();
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Registration failed');
+    }
 
-  if (!response.ok) {
-    throw new Error(data.error || `HTTP error! status: ${response.status}`);
-  }
-
-  return data;
+    return response.json();
 };
-*/
+
+export const getToken = (): string | null => {
+    return localStorage.getItem('authToken');
+};
+
+export const setToken = (token: string): void => {
+    localStorage.setItem('authToken', token);
+};
+
+export const logout = (): void => {
+    localStorage.removeItem('authToken');
+    // Optionally: Redirect or notify other parts of the app
+};
+
+
+export const verifyToken = async (token: string): Promise<{ user: { id: number; email: string } }> => {
+    const response = await fetch('/api/auth/me', {
+        headers: {
+            'Authorization': `Bearer ${token}`,
+        },
+    });
+
+    if (!response.ok) {
+        throw new Error('Invalid token');
+    }
+
+    return response.json();
+};
