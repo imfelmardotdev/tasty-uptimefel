@@ -18,12 +18,15 @@ class Website {
      */
     static async create(data) {
         // Add monitor type and config if not provided
-        const websiteData = {
-            ...data,
-            monitor_type: data.monitorType || 'http',
-            monitor_config: data.monitorConfig ? JSON.stringify(data.monitorConfig) : null
-        };
-        return createWebsite(websiteData);
+         // Use data.monitor_config passed from controller and stringify it
+         const websiteData = {
+             ...data,
+             monitor_type: data.monitorType || 'http',
+             monitor_config: data.monitor_config ? JSON.stringify(data.monitor_config) : null // Use monitor_config here
+         };
+         // We no longer need to delete monitorConfig as the controller did it
+         // delete websiteData.monitorConfig; // Remove this if it exists elsewhere
+         return createWebsite(websiteData);
     }
 
     /**
@@ -54,12 +57,15 @@ class Website {
      */
     static async update(id, data) {
         // Handle monitor type and config in update
-        const updateData = {
-            ...data,
-            monitor_type: data.monitorType,
-            monitor_config: data.monitorConfig ? JSON.stringify(data.monitorConfig) : null
-        };
-        return updateWebsite(id, updateData);
+         // Use data.monitor_config passed from controller and stringify it
+         const updateData = {
+             ...data,
+             monitor_type: data.monitorType,
+             monitor_config: data.monitor_config ? JSON.stringify(data.monitor_config) : null // Use monitor_config here
+         };
+         // We no longer need to delete monitorConfig as the controller did it
+         // delete updateData.monitorConfig; // Remove this if it exists elsewhere
+         return updateWebsite(id, updateData);
     }
 
     /**

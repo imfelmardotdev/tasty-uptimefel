@@ -21,12 +21,13 @@ const checkWebsites = async () => {
                 // Check if active AND check_interval has passed since last check
                 // Assuming 'active' column exists and is 1 for active, 0 for paused
                 if (website.active === 1 && timeSinceLastCheck >= intervalMs) {
-                    console.log(`Checking website: ${website.name} (${website.url})`);
-
-                    // Perform the check
-                    const result = await performCheck(website);
-                    
-                    // Update status and history using db functions
+                      console.log(`Checking website: ${website.name} (${website.url})`);
+  
+                      // Perform the check
+                      // Removed log: console.log(`[Scheduler Debug] Website object before check:`, JSON.stringify(website, null, 2));
+                      const result = await performCheck(website);
+                      
+                      // Update status and history using db functions
                     await updateWebsiteStatus({ ...result, websiteId: website.id });
                     await insertCheckHistory({ ...result, websiteId: website.id });
                 }

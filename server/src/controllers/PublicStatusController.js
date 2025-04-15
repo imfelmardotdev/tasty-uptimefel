@@ -32,13 +32,13 @@ class PublicStatusController {
                         });
                     });
 
-                    return {
-                        id: site.id,
-                        name: site.name,
-                        // url: site.url, // Decide if URL should be public
-                        is_up: site.is_up,
-                        last_check_time: site.last_check_time,
-                        heartbeats: heartbeats, // Add heartbeats
+                     return {
+                         id: site.id,
+                         name: site.name,
+                         url: site.url, // Uncommented to include URL
+                         is_up: site.is_up,
+                         last_check_time: site.last_check_time,
+                         heartbeats: heartbeats, // Add heartbeats
                         // uptime_percentage: site.uptime_percentage // Add if needed
                     };
                 } catch (hbError) {

@@ -19,6 +19,7 @@ interface Website {
     last_response_time?: number;
     last_error?: string;
     heartbeats?: any[]; // Placeholder for heartbeat data
+    monitorType?: 'http' | 'https' | 'keyword'; // Add monitorType here
 }
 
 interface WebsiteListProps {
@@ -90,8 +91,12 @@ const WebsiteList: React.FC<WebsiteListProps> = ({ websites, onDelete, onCheck }
                         </div>
                         {/* Link the rest of the content */}
                         <Link to={`/monitor/${website.id}`} className="block cursor-pointer">
-                            <div className="text-sm text-gray-500 truncate mb-4">
+                            <div className="text-sm text-gray-500 truncate mb-1"> {/* Reduced margin bottom */}
                                 {website.url}
+                            </div>
+                            {/* Display Monitor Type */}
+                            <div className="text-xs text-gray-400 mb-3 capitalize"> {/* Added margin bottom */}
+                                Type: {website.monitorType || 'N/A'}
                             </div>
 
                             <div className="space-y-2 text-sm">

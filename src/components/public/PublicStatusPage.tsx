@@ -100,15 +100,20 @@ const PublicStatusPage = () => {
                     <div className="space-y-4">
                         {statuses.map((site) => (
                             // Removed console.log here
-                            <Card key={site.id} className="shadow-sm">
-                                {/* Make CardContent the flex container */}
-                                <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                                    {/* Site Name and Last Check */}
-                                    <div className="flex-grow min-w-0"> {/* Allow shrinking and prevent overflow */}
-                                        <p className="font-semibold text-lg truncate">{site.name}</p>
-                                        {/* Optionally display URL - consider privacy */}
-                                        {/* <p className="text-sm text-gray-500">{site.url}</p> */}
-                                        <p className="text-xs text-gray-500 mt-1">
+                                 <Card key={site.id} className="shadow-sm">
+                                     {/* Make CardContent the flex container */}
+                                     <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                         {/* Site Name and Last Check */}
+                                         <div className="flex-grow min-w-0"> {/* Allow shrinking and prevent overflow */}
+                                             {/* Display name as plain text */}
+                                             <p className="font-semibold text-lg truncate">{site.name}</p>
+                                             {/* Display URL below name if it exists */}
+                                             {site.url && (
+                                                 <p className="text-sm text-gray-500 truncate mt-0.5">
+                                                     <a href={site.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{site.url}</a>
+                                                 </p>
+                                             )}
+                                             <p className="text-xs text-gray-500 mt-1">
                                             Last check: {site.last_check_time ? dayjs(site.last_check_time).fromNow() : 'Never'}
                                         </p>
                                     </div>

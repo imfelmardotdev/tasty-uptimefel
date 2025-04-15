@@ -45,7 +45,7 @@ class WebsiteController {
 
             // Convert monitor config to match database schema
             if (data.monitorConfig) {
-                data.monitor_config = data.monitorConfig;
+                data.monitor_config = data.monitorConfig; // Pass the object directly
                 delete data.monitorConfig;
             }
 
@@ -169,7 +169,7 @@ class WebsiteController {
                 }
 
                 // Convert monitor config to match database schema
-                updateData.monitor_config = updateData.monitorConfig;
+                updateData.monitor_config = updateData.monitorConfig; // Pass the object directly
                 delete updateData.monitorConfig;
             }
 

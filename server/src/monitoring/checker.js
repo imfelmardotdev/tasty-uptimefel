@@ -77,20 +77,20 @@ const parseAcceptedStatuses = (acceptedStatuses) => {
 
 /**
  * Checks if a status code is within accepted ranges
- * @param {number} statusCode 
- * @param {Array<{start: number, end: number}>} acceptedRanges 
+ * @param {number} statusCode
+ * @param {Array<{start: number, end: number}>} acceptedRanges
  * @returns {boolean}
  */
 const isStatusCodeAccepted = (statusCode, acceptedRanges) => {
-    return acceptedRanges.some(range => 
+    return acceptedRanges.some(range =>
         statusCode >= range.start && statusCode <= range.end
     );
 };
 
 /**
  * Gets the redirect count from an axios response
- * @param {import('axios').AxiosResponse} response 
- * @param {string} originalUrl 
+ * @param {import('axios').AxiosResponse} response
+ * @param {string} originalUrl
  * @returns {{redirectCount: number, finalUrl: string}}
  */
 const getRedirectInfo = (response, originalUrl) => {
@@ -122,10 +122,11 @@ const getRedirectInfo = (response, originalUrl) => {
 /**
  * Performs a check with retries
  * @param {object} website Website configuration
- * @param {import('axios').AxiosInstance} axiosInstance 
+ * @param {import('axios').AxiosInstance} axiosInstance
  * @returns {Promise<object>} Check result
  */
-const performCheckWithRetries = async (website, axiosInstance) => {
+ const performCheckWithRetries = async (website, axiosInstance) => {
+    // Removed log: log.info(`[Checker - Debug] Running check for Monitor ID: ${website.id}, Type: ${website.monitorType}, URL: ${website.url}`);
     const maxRetries = website.retry_count || 1;
     const acceptedRanges = parseAcceptedStatuses(website.accepted_statuses);
     let lastError = null;
@@ -135,9 +136,11 @@ const performCheckWithRetries = async (website, axiosInstance) => {
         const startTime = Date.now();
         try {
             const response = await axiosInstance.get(website.url);
-            const { redirectCount, finalUrl } = getRedirectInfo(response, website.url);
-
-            const result = {
+               const { redirectCount, finalUrl } = getRedirectInfo(response, website.url);
+   
+               // Removed log: log.info(`[Checker - Got Response] Monitor ID: ${website.id}, Status Code: ${response.status}`);
+   
+               const result = {
                 websiteId: website.id,
                 statusCode: response.status,
                 responseTimeMs: Date.now() - startTime,
@@ -150,15 +153,66 @@ const performCheckWithRetries = async (website, axiosInstance) => {
                 error_message: null
             };
 
-            // If the check is successful, return immediately
-            if (result.isUp) {
-                return result;
+             // *** Keyword Check Integration START ***
+              // Use the monitorType alias here
+              if (website.monitorType === MONITOR_KEYWORD && isStatusCodeAccepted(response.status, acceptedRanges)) {
+                  // Removed log: log.info(`[Checker - Raw Monitor Config] Monitor ID: ${website.id}, Raw Config: ${website.monitor_config}`);
+                  const keywordConfig = typeof website.monitor_config === 'string'
+                     ? JSON.parse(website.monitor_config || '{}')
+                    : (website.monitor_config || {});
+                const keyword = keywordConfig?.keyword || '';
+                 const invertKeyword = keywordConfig?.invertKeyword === true;
+ 
+                 // Removed log: log.info(`[Checker - Keyword PreCheck] Monitor ID: ${website.id}, Status Code: ${response.status}, Accepted: ${isStatusCodeAccepted(response.status, acceptedRanges)}, Keyword Config: ${JSON.stringify(keywordConfig)}, Keyword Value: "${keyword}"`);
+ 
+                  if (keyword) { // Only perform check if keyword is specified
+                      // Removed log: log.info(`[Checker - Keyword Debug] Monitor ID: ${website.id}, Config String: ${website.monitor_config}`);
+                      // Removed log: log.info(`[Checker - Keyword Debug] Monitor ID: ${website.id}, Parsed Config: ${JSON.stringify(keywordConfig)}`);
+                      const keywordFound = checkKeyword(response.data, keywordConfig);
+                      const expectedKeywordState = !invertKeyword; // True if we expect it to be found
+  
+                      // Removed log: log.info(`[Checker - Keyword Debug] Monitor ID: ${website.id}, Keyword: "${keyword}", Invert: ${invertKeyword}, Found: ${keywordFound}, Expected State: ${expectedKeywordState}`);
+  
+                      if (keywordFound === expectedKeywordState) {
+                          // Keyword condition met, status is UP
+                        result.isUp = true;
+                        // Optionally refine the success message
+                        result.error_message = `OK (${result.statusCode}), Keyword "${keyword}" check passed (found: ${keywordFound}, invert: ${invertKeyword})`;
+                    } else {
+                        // Keyword condition NOT met, status is DOWN
+                        result.isUp = false;
+                        result.error_type = 'KEYWORD_MISMATCH';
+                        result.error_message = `Keyword "${keyword}" check failed (found: ${keywordFound}, invert: ${invertKeyword})`;
+                        // Store this failed result and continue retries if applicable
+                        finalResult = result;
+                        // Throw an error to trigger retry or final failure reporting
+                        throw new Error(result.error_message);
+                    }
+                } else {
+                    // No keyword specified, treat as standard HTTP check
+                    result.isUp = isStatusCodeAccepted(response.status, acceptedRanges);
+                    if (!result.isUp) {
+                         finalResult = result;
+                         throw new Error(`Server responded with status: ${response.status}`);
+                    }
+                }
+            } else {
+                 // For non-keyword types or if initial status code check failed
+                 result.isUp = isStatusCodeAccepted(response.status, acceptedRanges);
+                 if (!result.isUp) {
+                    finalResult = result;
+                    throw new Error(`Server responded with status: ${response.status}`);
+                 }
             }
+            // *** Keyword Check Integration END ***
 
-            // Store the result for potential use if all retries fail
-            finalResult = result;
+
+            // If we reach here, the check (including keyword if applicable) was successful
+            return result;
+
 
         } catch (error) {
+            // Handle errors from axios request OR thrown by keyword check failure
             lastError = error;
             const errorResult = {
                 websiteId: website.id,
@@ -243,22 +297,27 @@ const checkCertificate = (hostname, port = 443) => {
  * Performs keyword check in response body
  * @param {string} body Response body
  * @param {object} config Keyword configuration
- * @returns {boolean} Whether keyword was found
+ * @returns {boolean} Whether keyword was found according to config (respecting case sensitivity)
  */
 const checkKeyword = (body, config) => {
-    const keyword = config.keyword || '';
-    const caseSensitive = config.caseSensitive || false;
-    
+    const keyword = config?.keyword || '';
+    const caseSensitive = config?.caseSensitive === true; // Default to case-insensitive unless explicitly true
+
     if (!keyword) {
         return true; // No keyword specified means pass
     }
 
-    if (!caseSensitive) {
-        return body.toLowerCase().includes(keyword.toLowerCase());
+    if (caseSensitive) {
+        // Ensure body is a string before calling includes
+        const bodyString = typeof body === 'string' ? body : JSON.stringify(body);
+        return bodyString.includes(keyword);
+    } else {
+        // Ensure body is a string before calling toLowerCase
+        const bodyString = typeof body === 'string' ? body : JSON.stringify(body);
+        return bodyString.toLowerCase().includes(keyword.toLowerCase());
     }
-    
-    return body.includes(keyword);
 };
+
 
 /**
  * Performs a website check with the given configuration
@@ -269,49 +328,32 @@ const performCheck = async (website) => {
     const axiosInstance = createAxiosInstance(website);
     let checkResult = await performCheckWithRetries(website, axiosInstance);
 
-    // Additional checks based on monitor type
-    if (website.monitor_type === MONITOR_HTTPS || website.monitor_type === MONITOR_KEYWORD) {
+    // Additional checks for HTTPS certificate (Keyword check is now integrated into performCheckWithRetries)
+    if (website.monitor_type === MONITOR_HTTPS && checkResult.isUp) {
         try {
-            // For HTTPS, check certificate
-            if (website.monitor_type === MONITOR_HTTPS) {
-                const url = new URL(website.url);
-                const certInfo = await checkCertificate(url.hostname);
-                
-                checkResult.certInfo = certInfo;
-                
-                // Update isUp based on certificate validity and expiration threshold
-                if (!certInfo.valid) {
-                    checkResult.isUp = false;
-                    checkResult.error_message = 'Invalid SSL certificate';
-                } else if (website.monitor_config?.expiryThreshold && 
-                         certInfo.daysUntilExpiration <= website.monitor_config.expiryThreshold) {
-                    checkResult.isUp = false;
-                    checkResult.error_message = `Certificate expires in ${certInfo.daysUntilExpiration} days`;
-                }
-            }
+            const url = new URL(website.url);
+            const certInfo = await checkCertificate(url.hostname);
+            checkResult.certInfo = certInfo;
 
-            // For keyword monitoring, check response body *after* the initial status check passes
-            if (website.monitor_type === MONITOR_KEYWORD && checkResult.isUp) {
-                // Need to re-fetch the content if the initial check was just a HEAD or didn't get body
-                // For simplicity here, we assume the initial check got the body or re-fetch
-                // A more optimized approach might store the body from the initial check if available
-                const response = await axiosInstance.get(website.url); // Re-fetch might be needed depending on initial check method
-                const keywordConfig = typeof website.monitor_config === 'string'
-                    ? JSON.parse(website.monitor_config)
-                    : website.monitor_config;
-                const keywordFound = checkKeyword(response.data, keywordConfig || {});
-
-                if (!keywordFound) {
-                    checkResult.isUp = false;
-                    checkResult.error_type = 'KEYWORD_MISMATCH';
-                    checkResult.error_message = `Keyword "${keywordConfig?.keyword || ''}" not found in response`;
-                }
+            // Update isUp based on certificate validity and expiration threshold
+            if (!certInfo.valid) {
+                checkResult.isUp = false; // Mark as down if cert is invalid
+                checkResult.error_type = 'SSL_INVALID';
+                checkResult.error_message = 'Invalid SSL certificate';
+            } else if (website.monitor_config?.expiryThreshold &&
+                       certInfo.daysUntilExpiration <= website.monitor_config.expiryThreshold) {
+                checkResult.isUp = false; // Mark as down if cert is expiring soon
+                checkResult.error_type = 'SSL_EXPIRING';
+                checkResult.error_message = `Certificate expires in ${certInfo.daysUntilExpiration} days (threshold: ${website.monitor_config.expiryThreshold})`;
             }
+            // If cert is valid and not expiring soon, isUp remains as determined by performCheckWithRetries
+
         } catch (error) {
-            // Handle errors during certificate or keyword checks
-            checkResult.isUp = false;
-            checkResult.error_message = error.message;
-            log.error(`[Checker] Additional check failed for ${website.url}:`, error);
+            // Handle errors during certificate check
+            checkResult.isUp = false; // Mark as down if cert check fails
+            checkResult.error_type = 'SSL_ERROR';
+            checkResult.error_message = `SSL check failed: ${error.message}`;
+            log.error(`[Checker] SSL check failed for ${website.url}:`, error);
         }
     }
 

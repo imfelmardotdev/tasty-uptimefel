@@ -125,20 +125,15 @@ const MonitorDetailsPage: React.FC = () => {
                  // TODO: Add error toast
             }
         }
-    };
-
-     // Handler for successful update from Edit dialog
-     const handleUpdateWebsite = async (id: number, updatedData: Partial<Website>) => {
-         try {
-             const updatedMonitor = await monitoringService.updateWebsite(id, updatedData);
-             setMonitor(updatedMonitor); // Update local state with response from API
-             setIsEditDialogOpen(false);
-             // TODO: Add success toast
-         } catch (err) {
-              console.error("Error updating website:", err);
-              // TODO: Add error toast inside the dialog? Or here?
-         }
      };
+ 
+      // Handler for successful update from Edit dialog
+      // This function receives the *already updated* monitor object from the dialog's internal submit handler
+      const handleUpdateWebsite = (updatedMonitor: Website) => {
+          setMonitor(updatedMonitor); // Update local state with the data returned by the dialog's onUpdate prop
+          setIsEditDialogOpen(false); // Close the dialog
+          // TODO: Add success toast notification here if desired
+      };
 
     const getStatusColor = (status: number) => {
         switch (status) {
@@ -201,12 +196,16 @@ const MonitorDetailsPage: React.FC = () => {
                     <p className="text-sm text-blue-600 mt-2 break-all">
                         {/* Display relevant URL/Host based on type */}
                         {monitor.url && <a href={monitor.url} target="_blank" rel="noopener noreferrer">{monitor.url}</a>}
-                        {monitor.hostname && <span>{monitor.hostname}{monitor.port ? `:${monitor.port}` : ''}</span>}
-                        {/* Add more type-specific details here */}
-                    </p>
-                </div>
-
-                {/* Action Buttons */}
+                         {monitor.hostname && <span>{monitor.hostname}{monitor.port ? `:${monitor.port}` : ''}</span>}
+                         {/* Add more type-specific details here */}
+                     </p>
+                     {/* Display Monitor Type */}
+                     <p className="text-sm text-gray-500 mt-1">
+                         Type: <span className="font-medium capitalize">{monitor.monitorType}</span>
+                     </p>
+                 </div>
+ 
+                 {/* Action Buttons */}
                 <div className="flex flex-wrap gap-2">
                     {monitor.active ? (
                         <Button variant="outline" size="sm" onClick={handlePause}><Pause className="mr-2 h-4 w-4" /> Pause</Button>
