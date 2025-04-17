@@ -103,6 +103,19 @@ export interface ChartDataPoint {
     maintenance?: number;
 }
 
+// Define interface for the new dashboard summary endpoint
+export interface DashboardSummary {
+    up: number;
+    down: number;
+    paused: number;
+    total: number;
+    // Add fields from backend placeholder data
+    overallUptime24h?: number;
+    incidents24h?: number;
+    daysWithoutIncidents?: number;
+    affectedMonitors24h?: number;
+}
+
 
 const monitoringService = {
   // --- Website CRUD ---
@@ -208,6 +221,17 @@ const monitoringService = {
        return response.data;
      } catch (error) {
        console.error(`Error fetching chart data for monitor ${monitorId} (${period}):`, error);
+       throw error;
+     }
+   },
+
+   // --- Dashboard Summary ---
+   async getDashboardSummary(): Promise<DashboardSummary> {
+     try {
+       const response = await apiClient.get<DashboardSummary>('/stats/summary');
+       return response.data;
+     } catch (error) {
+       console.error('Error fetching dashboard summary:', error);
        throw error;
      }
    },

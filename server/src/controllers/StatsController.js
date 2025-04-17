@@ -225,6 +225,76 @@ const StatsController = {
             }
         }
     },
+
+    /**
+     * Get overall dashboard summary statistics (up/down/paused counts).
+     */
+    getDashboardSummary: async (req, res) => {
+        const userId = req.user?.id; // Get user ID from authenticated request
+
+        if (!userId) {
+            // This shouldn't happen if authenticateToken middleware is working
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        try {
+            const db = getDatabase();
+            const sql = `
+                SELECT is_up, active
+                FROM websites
+                WHERE user_id = ?
+            `;
+
+            db.all(sql, [userId], (err, rows) => {
+                if (err) {
+                    log.error(`[StatsController] DB Error fetching website statuses for dashboard summary (User ${userId}):`, err);
+                    if (!res.headersSent) {
+                        return res.status(500).json({ message: 'Error fetching dashboard summary data' });
+                    }
+                    return; // Ensure no further processing
+                }
+
+                let upCount = 0;
+                let downCount = 0;
+                let pausedCount = 0;
+
+                (rows || []).forEach(website => {
+                    if (website.active === 0 || website.active === false) { // Check if paused (inactive)
+                        pausedCount++;
+                    } else if (website.is_up === 1 || website.is_up === true) { // Check if active and up
+                        upCount++;
+                    } else { // Must be active and down (or unknown, count as down for simplicity)
+                        downCount++;
+                    }
+                });
+
+                if (!res.headersSent) {
+                    res.json({
+                        up: upCount,
+                        down: downCount,
+                        paused: pausedCount,
+                        total: rows.length, // Total monitors for this user
+
+                        // --- Placeholder data for RecentStatsPanel ---
+                        // TODO: Implement actual calculation for these values
+                        // This might involve querying heartbeats/stats tables for the last 24h
+                        // or using an aggregated calculation service.
+                        overallUptime24h: 99.95, // Placeholder percentage
+                        incidents24h: 0,        // Placeholder count
+                        daysWithoutIncidents: 1, // Placeholder count
+                        affectedMonitors24h: 0   // Placeholder count
+                        // --- End Placeholder data ---
+                    });
+                }
+            });
+
+        } catch (error) {
+            log.error(`[StatsController] Error fetching dashboard summary for user ${userId}:`, error);
+            if (!res.headersSent) {
+                res.status(500).json({ message: 'Error fetching dashboard summary data' });
+            }
+        }
+    },
 };
 
 module.exports = StatsController;

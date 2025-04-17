@@ -1,11 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button'; // Corrected import path
-import { Plus } from 'lucide-react';
-// import { useAuth } from '../../contexts/AuthContext'; // No longer needed directly
-import AddWebsiteDialog from './AddWebsiteDialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input'; // For Search
+import { Checkbox } from '@/components/ui/checkbox'; // For Bulk Select
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu'; // For dropdowns
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'; // For Select dropdowns
+import { Plus, ChevronDown, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
+// import AddWebsiteDialog from './AddWebsiteDialog'; // Removed import
+import WebsiteForm, { WebsiteFormValues } from './WebsiteForm'; // Import WebsiteForm and its value type
 import WebsiteList from './WebsiteList';
-import monitoringService, { Website as WebsiteData, Heartbeat } from '@/services/monitoringService'; // Import service and types
+import monitoringService, { Website as WebsiteData, Heartbeat } from '@/services/monitoringService';
+import CurrentStatusPanel from './CurrentStatusPanel'; // Import Status Panel
+import RecentStatsPanel from './RecentStatsPanel';   // Import Status Panel
 
 // Use interface from service, add heartbeats field
 interface Website extends WebsiteData {
@@ -58,10 +64,22 @@ const MonitoringDashboard = () => {
         }
     };
 
-    const handleAddWebsite = async (websiteData: Omit<WebsiteData, 'id'>) => {
+    // Update handleAddWebsite to accept WebsiteFormValues
+    const handleAddWebsite = async (formData: WebsiteFormValues) => {
         try {
+            // Explicitly construct the object to ensure type compatibility
+            const websiteData: Omit<WebsiteData, 'id'> = {
+                name: formData.name,
+                url: formData.url,
+                monitorType: formData.monitorType,
+                timeout_ms: formData.timeout_ms,
+                monitorConfig: formData.monitorConfig || {},
+                active: true, // Add default active state
+                // Add other optional fields from Website interface if needed,
+                // otherwise they default to undefined which is acceptable
+            };
             const newWebsite = await monitoringService.addWebsite(websiteData);
-            // Add with empty heartbeats initially, fetchWebsites will populate later if needed
+            // Add with empty heartbeats initially, fetchWebsites will populate later
             setWebsites(prev => [...prev, { ...newWebsite, heartbeats: [] }]);
             setIsAddDialogOpen(false);
             // Optionally trigger an immediate check for the new site
@@ -112,37 +130,118 @@ const MonitoringDashboard = () => {
     }
 
     return (
-        <div className="container mx-auto px-4 py-8">
-            <div className="flex justify-between items-center mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold">{import.meta.env.VITE_APP_NAME || 'Website Monitoring'}</h1>
-                    <p className="text-sm text-muted-foreground">{import.meta.env.VITE_APP_DESCRIPTION || 'Monitor your websites easily.'}</p>
-                </div>
-                <Button
-                    onClick={() => setIsAddDialogOpen(true)}
-                    className="bg-primary text-white"
-                >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Website
-                </Button>
+        // Removed container mx-auto px-4 py-8, padding is handled by DashboardLayout
+        <div className="flex flex-col h-full">
+            {/* Header Section */}
+            <div className="mb-6">
+                <h1 className="text-3xl font-semibold text-gray-900">Monitors.</h1>
+                {/* Optional: Add subtitle if needed */}
             </div>
 
-            {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                    {error}
+            {/* Action Bar - Added responsive flex classes */}
+            <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-2 mb-6 bg-white p-3 rounded-lg shadow-sm border border-gray-200">
+                {/* Left side controls - Allow wrapping */}
+                <div className="flex flex-wrap items-center gap-y-2 gap-x-3">
+                    <Checkbox id="bulk-select-all" /> {/* Placeholder */}
+                    {/* Bulk Actions Dropdown */}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="flex items-center">
+                                Bulk actions <ChevronDown className="ml-1 h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuItem>Pause</DropdownMenuItem>
+                            <DropdownMenuItem>Start</DropdownMenuItem>
+                            <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    {/* Tags Dropdown */}
+                     <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="flex items-center">
+                                All tags <ChevronDown className="ml-1 h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuItem>Tag 1</DropdownMenuItem> {/* Placeholder */}
+                            <DropdownMenuItem>Tag 2</DropdownMenuItem> {/* Placeholder */}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
-            )}
+                 {/* Right side controls - Allow wrapping, ensure search takes available space */}
+                <div className="flex flex-wrap items-center gap-y-2 gap-x-2 flex-grow justify-end md:flex-nowrap">
+                     <Input
+                        type="search"
+                        placeholder="Search by name or url"
+                        className="h-9 w-full sm:w-auto sm:max-w-xs flex-grow" // Allow input to grow
+                    />
+                    {/* Sort Dropdown */}
+                    <Select defaultValue="down-first">
+                         {/* Consider hiding text on small screens if needed */}
+                        <SelectTrigger className="w-auto sm:w-[150px] h-9 text-sm flex-shrink-0">
+                            <ArrowUpDown className="mr-1 h-3 w-3" />
+                            <span className="hidden sm:inline"><SelectValue placeholder="Sort by..." /></span>
+                             <span className="sm:hidden">Sort</span> {/* Show simple text on mobile */}
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="down-first">Down first</SelectItem>
+                            <SelectItem value="up-first">Up first</SelectItem>
+                            <SelectItem value="name-asc">Name (A-Z)</SelectItem>
+                            <SelectItem value="name-desc">Name (Z-A)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    {/* Filter Button */}
+                    <Button variant="outline" size="sm" className="h-9 flex-shrink-0">
+                        <SlidersHorizontal className="mr-1 h-4 w-4" />
+                         <span className="hidden sm:inline">Filter</span>
+                         <span className="sm:hidden">Filters</span>
+                    </Button>
+                    {/* Add New Monitor Button */}
+                    <Button
+                        onClick={() => setIsAddDialogOpen(true)}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white h-9" // Updated style
+                    >
+                        <Plus className="w-4 h-4 mr-1" />
+                        New monitor
+                    </Button>
+                </div>
+            </div>
 
-            <WebsiteList
-                websites={websites}
-                onDelete={handleDeleteWebsite}
-                onCheck={handleCheckWebsite}
-            />
+            {/* Main Content Area (List + Status Panels) - Added responsive grid classes */}
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Monitor List - Takes full width on small, 2/3 on large */}
+                <div className="lg:col-span-2 order-2 lg:order-1"> {/* Change order on mobile */}
+                    {error && (
+                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                            {error}
+                        </div>
+                    )}
+                    {/* WebsiteList content itself might need further responsive adjustments */}
+                    <WebsiteList
+                        websites={websites}
+                        onDelete={handleDeleteWebsite}
+                        onCheck={handleCheckWebsite}
+                    />
+                </div>
 
-            <AddWebsiteDialog
+                {/* Status Panels Sidebar - Takes full width on small, 1/3 on large */}
+                <div className="lg:col-span-1 space-y-6 order-1 lg:order-2"> {/* Change order on mobile */}
+                    <CurrentStatusPanel />
+                    <RecentStatsPanel />
+                </div>
+            </div>
+
+
+            {/* Use WebsiteForm directly for adding */}
+            <WebsiteForm
                 open={isAddDialogOpen}
-                onClose={() => setIsAddDialogOpen(false)}
-                onAdd={handleAddWebsite}
+                onOpenChange={setIsAddDialogOpen} // Pass the state setter directly
+                onSubmit={handleAddWebsite}
+                isEditing={false} // Explicitly set isEditing to false
+                maxWebsitesReached={false} // Placeholder
+                // initialValues are handled by default in WebsiteForm for adding
             />
         </div>
     );

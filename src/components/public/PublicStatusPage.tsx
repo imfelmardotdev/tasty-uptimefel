@@ -1,21 +1,52 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent } from '../ui/card'; // Removed CardHeader, CardTitle
-import { Badge } from '../ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Calendar, Loader2, AlertTriangle } from 'lucide-react'; // Import necessary icons
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import HeartbeatBar from '../dashboard/HeartbeatBar'; // Import HeartbeatBar
+import HeartbeatBar from '../dashboard/HeartbeatBar'; // Reusing HeartbeatBar
 import { Heartbeat } from '@/services/monitoringService'; // Import Heartbeat type
 
 dayjs.extend(relativeTime);
 
+// Interface for the data fetched from /api/public/status
 interface PublicWebsiteStatus {
     id: number;
     name: string;
-    url?: string; // Make URL optional if not always returned
-    is_up: boolean | null; // Can be null initially
+    url?: string;
+    is_up: boolean | null;
     last_check_time: string | null;
-    heartbeats?: Heartbeat[]; // Add heartbeats array
+    heartbeats?: Heartbeat[];
+    // Add uptime percentages if/when backend provides them
+    uptime_percent_90d?: number; // Keep for placeholder logic for now
 }
+
+// --- Placeholder Data Structures (Used only if API doesn't provide needed fields) ---
+interface OverallUptimeStats {
+    uptime_24h: number;
+    uptime_7d: number;
+    uptime_30d: number;
+    uptime_90d: number;
+}
+
+interface StatusUpdate {
+    id: number;
+    timestamp: string;
+    title: string;
+    description: string;
+    status: 'resolved' | 'investigating' | 'monitoring';
+}
+
+// Placeholder data for sections not yet covered by API
+const placeholderOverallUptime: OverallUptimeStats = {
+    uptime_24h: 0.000, // Placeholder
+    uptime_7d: 0.070, // Placeholder
+    uptime_30d: 0.070, // Placeholder
+    uptime_90d: 0.070, // Placeholder
+};
+const placeholderStatusUpdates: StatusUpdate[] = []; // Placeholder
+// --- End Placeholder Data ---
+
 
 const PublicStatusPage = () => {
     const [statuses, setStatuses] = useState<PublicWebsiteStatus[]>([]);
@@ -24,9 +55,8 @@ const PublicStatusPage = () => {
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
     const fetchStatuses = async () => {
-        // Keep loading true only on initial load
-        // setIsLoading(true); // Removed for subsequent fetches
-        setError(null);
+        // Don't reset loading on interval fetches unless it's the initial load
+        // setError(null); // Reset error each time? Maybe not, keep last error visible.
         try {
             const response = await fetch('/api/public/status');
             if (!response.ok) {
@@ -35,110 +65,168 @@ const PublicStatusPage = () => {
             const data: PublicWebsiteStatus[] = await response.json();
             setStatuses(data);
             setLastUpdated(new Date());
+            setError(null); // Clear error on success
         } catch (err: any) {
             console.error("Failed to fetch public statuses:", err);
             setError(`Failed to load statuses: ${err.message || 'Unknown error'}`);
-            // Don't clear statuses on error, show last known state
+            // Keep existing statuses to show last known state
         } finally {
-            // Only set loading false on initial load
-            if (isLoading) setIsLoading(false); 
+            setIsLoading(false); // Set loading false after first fetch attempt
         }
     };
 
     useEffect(() => {
         fetchStatuses(); // Initial fetch
         const intervalId = setInterval(fetchStatuses, 60000); // Refresh every 60 seconds
-
         return () => clearInterval(intervalId); // Cleanup interval on unmount
     }, []); // Empty dependency array ensures this runs only once on mount
 
-    const getStatusBadge = (isUp: boolean | null) => {
-        if (isUp === null || isUp === undefined) {
-            return <Badge variant="secondary">Pending</Badge>;
-        }
-        return isUp ? 
-            <Badge variant="default" className="bg-green-500 text-white">Up</Badge> : 
-            <Badge variant="destructive">Down</Badge>;
+    const getStatusColorClass = (isUp: boolean | null) => {
+        if (isUp === null) return 'bg-gray-400';
+        return isUp ? 'bg-green-500' : 'bg-red-500';
+    };
+    const getStatusText = (isUp: boolean | null) => {
+        if (isUp === null) return 'Pending';
+        return isUp ? 'Up' : 'Down';
     };
 
+    // Calculate overall status based on fetched data
+    const isOverallDown = isLoading ? false : (statuses.length === 0 || statuses.some(s => s.is_up === false || s.is_up === null));
+    const overallStatusText = isLoading ? 'Checking...' : (statuses.length === 0 ? 'No Monitors' : (isOverallDown ? 'Degraded' : 'Operational'));
+    const overallStatusColor = isLoading ? 'bg-gray-400' : (statuses.length === 0 ? 'bg-gray-400' : (isOverallDown ? 'bg-red-500' : 'bg-green-500'));
+
     return (
-        <div className="min-h-screen bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-3xl mx-auto">
-                <h1 className="text-3xl font-bold text-center text-gray-900 mb-4">
-                    {import.meta.env.VITE_APP_NAME || 'Website Status'}
-                </h1>
-                <p className="text-center text-gray-600 mb-8">
-                    Current status of monitored services.
-                    {lastUpdated && (
-                         <span className="block text-sm">Last updated: {dayjs(lastUpdated).format('YYYY-MM-DD HH:mm:ss')} ({dayjs(lastUpdated).fromNow()})</span>
-                    )}
-                </p>
+        <div className="min-h-screen bg-gray-100 py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-5xl mx-auto">
 
-                {isLoading && (
-                    <div className="flex justify-center items-center py-10">
-                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                {/* Header Section */}
+                <div className="bg-white p-4 rounded-lg shadow mb-6 flex flex-wrap justify-between items-center gap-2">
+                    <h1 className="text-xl font-semibold text-gray-900">Status page</h1>
+                    <div className="text-sm text-gray-600 text-right">
+                        <p className="font-medium">Service status</p>
+                        <p>
+                            {lastUpdated ? `Last updated ${dayjs(lastUpdated).format('HH:mm:ss A')}` : 'Updating...'}
+                            {/* Placeholder for next update time */}
+                        </p>
                     </div>
-                )}
+                </div>
 
-                {error && !isLoading && (
-                    <Card className="bg-red-50 border-red-200 mb-6">
-                        <CardContent className="pt-6">
-                            <p className="text-red-700 text-center">{error}</p>
-                        </CardContent>
-                    </Card>
-                )}
+                {/* Overall Status Card */}
+                <Card className="bg-white p-4 rounded-lg shadow mb-6">
+                    <CardContent className="p-0 flex items-center space-x-3">
+                        <div className={`h-6 w-6 rounded-full flex-shrink-0 ${overallStatusColor}`}></div>
+                        <span className="text-lg text-gray-800">All systems</span>
+                        <span className={`text-lg font-semibold ${isOverallDown ? 'text-red-600' : 'text-green-600'}`}>
+                            {overallStatusText}
+                        </span>
+                    </CardContent>
+                </Card>
 
-                {!isLoading && !error && statuses.length === 0 && (
-                     <Card className="bg-blue-50 border-blue-200">
-                        <CardContent className="pt-6">
-                            <p className="text-blue-700 text-center">No websites are currently being monitored.</p>
-                        </CardContent>
-                    </Card>
-                )}
-
-                {!isLoading && statuses.length > 0 && (
-                    <div className="space-y-4">
-                        {statuses.map((site) => (
-                            // Removed console.log here
-                                 <Card key={site.id} className="shadow-sm">
-                                     {/* Make CardContent the flex container */}
-                                     <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                                         {/* Site Name and Last Check */}
-                                         <div className="flex-grow min-w-0"> {/* Allow shrinking and prevent overflow */}
-                                             {/* Display name as plain text */}
-                                             <p className="font-semibold text-lg truncate">{site.name}</p>
-                                             {/* Display URL below name if it exists */}
-                                             {site.url && (
-                                                 <p className="text-sm text-gray-500 truncate mt-0.5">
-                                                     <a href={site.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{site.url}</a>
-                                                 </p>
-                                             )}
-                                             <p className="text-xs text-gray-500 mt-1">
-                                            Last check: {site.last_check_time ? dayjs(site.last_check_time).fromNow() : 'Never'}
-                                        </p>
+                {/* Uptime Section */}
+                <div className="mb-6">
+                    <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                            Uptime <span className="text-base font-normal text-gray-600">Last 90 days</span> {/* Period might need to be dynamic later */}
+                        </h2>
+                        {/* Removed Calendar link */}
+                    </div>
+                    <Card className="bg-white rounded-lg shadow overflow-hidden">
+                        <CardContent className="p-0">
+                            {isLoading && statuses.length === 0 ? ( // Show loader only on initial load
+                                <div className="p-6 text-center text-gray-500 flex justify-center items-center">
+                                    <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading monitors...
+                                </div>
+                            ) : error && statuses.length === 0 ? ( // Show error only if no data loaded previously
+                                 <div className="p-6 text-center text-red-600 flex justify-center items-center">
+                                     <AlertTriangle className="h-6 w-6 mr-2" /> {error}
+                                 </div>
+                            ) : !isLoading && statuses.length === 0 ? ( // No monitors configured
+                                 <div className="p-6 text-center text-gray-500">No monitors configured for public status page.</div>
+                            ) : (
+                                // Render statuses even if there's an error, showing last known state
+                                statuses.map((monitor, index) => (
+                                <div key={monitor.id} className={`flex flex-wrap items-center p-4 gap-x-4 gap-y-2 ${index < statuses.length - 1 ? 'border-b border-gray-200' : ''}`}>
+                                    <div className="flex-1 font-medium text-gray-800 min-w-[150px] truncate">{monitor.name}</div>
+                                    {/* Display uptime % (using placeholder value for now) */}
+                                    <div className="text-sm text-green-600 w-16 text-right">
+                                        {typeof monitor.uptime_percent_90d === 'number'
+                                            ? `${monitor.uptime_percent_90d.toFixed(3)}%`
+                                            : 'N/A'}
                                     </div>
-                                    {/* Heartbeat Bar in the middle */}
-                                    <div className="flex-1 mx-2 sm:mx-4 min-w-[150px] sm:min-w-[200px]"> {/* Adjust min-width as needed */}
+                                    <div className="flex-grow min-w-[200px] w-full sm:w-auto order-last sm:order-none">
                                         <HeartbeatBar
-                                            monitorId={site.id}
-                                            heartbeats={site.heartbeats || []}
-                                            size="small" // Use smaller size
-                                            maxBeats={40} // Adjust beats shown
+                                            monitorId={monitor.id}
+                                            heartbeats={monitor.heartbeats || []}
+                                            size="small"
+                                            maxBeats={90} // Adjust based on desired timeframe (e.g., 90 for 90 days)
                                         />
                                     </div>
-                                    {/* Status Badge at the end */}
-                                    <div className="flex-shrink-0">
-                                        {getStatusBadge(site.is_up)}
+                                    <div className="flex items-center space-x-1.5 w-16 justify-end">
+                                        <div className={`h-2.5 w-2.5 rounded-full ${getStatusColorClass(monitor.is_up)}`}></div>
+                                        <span className={`text-sm ${monitor.is_up === false ? 'text-red-600' : 'text-gray-600'}`}>{getStatusText(monitor.is_up)}</span>
                                     </div>
-                                </CardContent>
-                                {/* Removed second CardContent */}
-                            </Card>
-                        ))}
-                    </div>
-                )}
+                                </div>
+                            )))}
+                            {error && statuses.length > 0 && ( // Show error subtly if showing stale data
+                                <div className="p-2 text-center text-xs text-red-500 bg-red-50 border-t border-red-200">
+                                    Status update failed: {error}. Displaying last known status.
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Overall Uptime Section (Using Placeholders) */}
+                <div className="mb-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-2">Overall Uptime</h2>
+                    <Card className="bg-white rounded-lg shadow">
+                        <CardContent className="p-4">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                                <div>
+                                    <p className="text-lg font-semibold text-gray-800">{placeholderOverallUptime.uptime_24h.toFixed(3)}%</p>
+                                    <p className="text-sm text-gray-500">Last 24 hours</p>
+                                </div>
+                                <div>
+                                    <p className="text-lg font-semibold text-gray-800">{placeholderOverallUptime.uptime_7d.toFixed(3)}%</p>
+                                    <p className="text-sm text-gray-500">Last 7 days</p>
+                                </div>
+                                <div>
+                                    <p className="text-lg font-semibold text-gray-800">{placeholderOverallUptime.uptime_30d.toFixed(3)}%</p>
+                                    <p className="text-sm text-gray-500">Last 30 days</p>
+                                </div>
+                                <div>
+                                    <p className="text-lg font-semibold text-gray-800">{placeholderOverallUptime.uptime_90d.toFixed(3)}%</p>
+                                    <p className="text-sm text-gray-500">Last 90 days</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Status Updates Section (Using Placeholders) */}
+                <div className="mb-6">
+                    <h2 className="text-lg font-semibold text-gray-900">
+                        Status updates <span className="text-base font-normal text-gray-600">Last 30 days</span>
+                    </h2>
+                    <Card className="bg-white p-4 rounded-lg shadow mt-2">
+                        <CardContent className="p-0">
+                            {placeholderStatusUpdates.length === 0 ? (
+                                <p className="text-gray-600">No incidents reported in the last 30 days.</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {/* Map through placeholderStatusUpdates here when data is available */}
+                                    <p className="text-gray-500 italic">Status update display not yet implemented.</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Footer */}
                  <footer className="text-center text-gray-500 text-sm mt-12">
-                   UptimeFel
+                   Powered by UptimeFel {/* Or your app name */}
                 </footer>
+
             </div>
         </div>
     );

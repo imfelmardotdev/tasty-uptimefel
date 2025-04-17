@@ -23,5 +23,9 @@ router.get('/monitor/:id/summary', StatsController.getMonitorStats);
 // GET /api/stats/monitor/:id/chart?period=24h
 router.get('/monitor/:id/chart', StatsController.getStatsForChart);
 
+// Route to get overall dashboard summary stats (up/down/paused counts, etc.)
+// GET /api/stats/summary
+router.get('/summary', StatsController.getDashboardSummary);
+
 
 module.exports = router;
