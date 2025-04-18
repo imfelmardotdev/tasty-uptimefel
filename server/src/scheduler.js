@@ -1,18 +1,25 @@
 // Removed: const Website = require('./models/Website'); - Not used directly here
 const { performCheck } = require('./monitoring/checker');
 const { getAllWebsites, updateWebsiteStatus, insertCheckHistory } = require('./database/db'); // Import db functions
+const { getDatabase } = require('./database/init'); // Import getDatabase to get the pool
 
 /**
  * Checks all active websites whose check interval has passed.
  */
 const checkWebsites = async () => {
-    console.log('Cron job: Starting website check cycle...');
+    console.log('[SCHEDULER] Starting website check cycle...');
     let checkedCount = 0;
     let errorCount = 0;
+    let client; // Define client variable outside try block
+
     try {
-        // Get all websites using the db function
-        const websites = await getAllWebsites();
-        console.log(`Found ${websites.length} websites to potentially check.`);
+        // Acquire a client connection from the pool
+        client = await getDatabase().connect();
+        console.log('[SCHEDULER] Database client acquired.');
+
+        // Get all websites using the acquired client
+        const websites = await getAllWebsites(client);
+        console.log(`[SCHEDULER] Found ${websites.length} websites to potentially check.`);
 
         // Check each website
         for (const website of websites) {
@@ -38,11 +45,12 @@ const checkWebsites = async () => {
 
                       // Update status and history using db functions
                       // Ensure result object structure matches what db functions expect
-                      console.log(`[SCHEDULER] Attempting DB update for ${website.name} (ID: ${website.id})...`);
+                      console.log(`[SCHEDULER] Attempting DB update for ${website.name} (ID: ${website.id}) using acquired client...`);
                       try {
-                          await updateWebsiteStatus({ ...result, websiteId: website.id });
+                          // Pass the acquired client to the DB functions
+                          await updateWebsiteStatus({ ...result, websiteId: website.id }, client);
                           console.log(`[SCHEDULER] DB updateWebsiteStatus successful for ${website.name}`);
-                          await insertCheckHistory({ ...result, websiteId: website.id });
+                          await insertCheckHistory({ ...result, websiteId: website.id }, client);
                           console.log(`[SCHEDULER] DB insertCheckHistory successful for ${website.name}`);
                       } catch (dbError) {
                           console.error(`[SCHEDULER] DATABASE ERROR updating status/history for ${website.name} (ID: ${website.id}):`, dbError);
@@ -70,8 +78,13 @@ const checkWebsites = async () => {
         }
     } catch (fetchError) { // Renamed variable for clarity
         errorCount++;
-        console.error('[SCHEDULER] FATAL ERROR fetching websites for monitoring loop:', fetchError);
+        console.error('[SCHEDULER] FATAL ERROR during check cycle (before or during website fetch):', fetchError);
     } finally {
+        // Ensure the client is always released back to the pool
+        if (client) {
+            client.release();
+            console.log('[SCHEDULER] Database client released.');
+        }
         console.log(`[SCHEDULER] Finished website check cycle. Checked: ${checkedCount}, Errors: ${errorCount}`);
     }
 };

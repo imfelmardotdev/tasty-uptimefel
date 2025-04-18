@@ -64,9 +64,10 @@ const createUser = async (email, passwordHash) => {
 
 /**
  * Gets all websites from the database (regardless of user)
+ * @param {pg.Client | pg.Pool} [dbClient=getDatabase()] Optional database client or pool
  * @returns {Promise<Array<object>>}
  */
- const getAllWebsites = async () => {
+ const getAllWebsites = async (dbClient = getDatabase()) => {
      // Adjusted SQL for PostgreSQL - alias columns explicitly if needed
      // Assuming table/column names are compatible or adjusted in migrations
      const sql = `
@@ -83,7 +84,7 @@ const createUser = async (email, passwordHash) => {
          ORDER BY w.created_at DESC
      `;
      try {
-         const result = await getDatabase().query(sql);
+         const result = await dbClient.query(sql); // Use provided client/pool
          // Map boolean fields if necessary (assuming 'active', 'is_up', 'follow_redirects' are boolean in PG)
          return result.rows.map(row => ({
              ...row,
@@ -336,9 +337,10 @@ const getLatestCheck = async (websiteId) => {
 /**
  * Inserts a new check result into monitoring_history
  * @param {object} check Check result including websiteId
+ * @param {pg.Client | pg.Pool} [dbClient=getDatabase()] Optional database client or pool
  * @returns {Promise<void>}
  */
-const insertCheckHistory = async (check) => {
+const insertCheckHistory = async (check, dbClient = getDatabase()) => {
     const sql = `
         INSERT INTO monitoring_history (
             website_id, status_code, response_time_ms, is_up,
@@ -358,7 +360,7 @@ const insertCheckHistory = async (check) => {
     ];
 
     try {
-        await getDatabase().query(sql, params);
+        await dbClient.query(sql, params); // Use provided client/pool
     } catch (err) {
         console.error(`Error inserting check history for website (${check.websiteId}):`, err);
         throw err;
@@ -368,9 +370,10 @@ const insertCheckHistory = async (check) => {
 /**
  * Updates the website_status table
  * @param {object} status Status update data including websiteId
+ * @param {pg.Client | pg.Pool} [dbClient=getDatabase()] Optional database client or pool
  * @returns {Promise<void>}
  */
-const updateWebsiteStatus = async (status) => {
+const updateWebsiteStatus = async (status, dbClient = getDatabase()) => {
     const sql = `
         UPDATE website_status SET
             last_check_time = NOW(),
@@ -393,7 +396,7 @@ const updateWebsiteStatus = async (status) => {
     ];
 
     try {
-        await getDatabase().query(sql, params);
+        await dbClient.query(sql, params); // Use provided client/pool
     } catch (err) {
         console.error(`Error updating website status for website (${status.websiteId}):`, err);
         throw err;
