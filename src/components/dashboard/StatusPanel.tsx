@@ -107,12 +107,22 @@ const StatusPanel = ({
     return date.toLocaleTimeString();
   };
 
-  const getResponseTimeClass = (time: number) => {
+  // Returns Tailwind *background* color classes
+  const getResponseTimeBgClass = (time: number) => {
+    if (time === 0) return "bg-destructive"; // Use destructive background
+    if (time > 2000) return "bg-amber-500";
+    if (time > 1000) return "bg-amber-400";
+    return "bg-green-500"; // Default to green background
+  };
+
+  // Returns Tailwind *text* color classes (for the label)
+  const getResponseTimeTextClass = (time: number) => {
     if (time === 0) return "text-destructive";
     if (time > 2000) return "text-amber-500";
     if (time > 1000) return "text-amber-400";
     return "text-green-500";
   };
+
 
   // Function to render uptime status bars like in the image
   const renderUptimeStatusBars = (uptime: number = 100) => {
@@ -249,7 +259,7 @@ const StatusPanel = ({
                   <div className="flex justify-between items-center mb-1">
                     <h3 className="font-medium">Response time</h3>
                     <span
-                      className={getResponseTimeClass(website.responseTime)}
+                      className={getResponseTimeTextClass(website.responseTime)} // Use correct function for text
                     >
                       {website.responseTime} ms
                     </span>
@@ -257,9 +267,7 @@ const StatusPanel = ({
                   <Progress
                     value={Math.min(100, (website.responseTime / 2000) * 100)}
                     className="h-2"
-                    indicatorClassName={getResponseTimeClass(
-                      website.responseTime,
-                    ).replace("text-", "bg-")}
+                    // Removed indicatorClassName prop as it's not valid
                   />
                 </div>
               </div>
