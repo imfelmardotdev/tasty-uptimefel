@@ -48,40 +48,36 @@ app.use('/api/websites', websiteRoutes); // Mount website routes under /api/webs
 
 // Cron Job Endpoint (protected by secret)
 // This needs to be defined separately as it's a POST on a specific path
-// NOTE: Temporarily simplified for debugging Vercel logs
-app.post('/api/cron/run-checks', async (req, res) => {
-    // const cronSecret = process.env.CRON_SECRET;
-    // const authHeader = req.headers.authorization;
+app.post('/api/cron/run-checks', async (req, res) => { // Restore async
+    console.log('[CRON HANDLER ENTRY] Handler function started.'); // Add log at the very start
 
-    // if (!cronSecret) {
-    //     console.error('CRON_SECRET environment variable not set.');
-    //     return res.status(500).json({ error: 'Cron secret not configured' });
-    // }
+    const cronSecret = process.env.CRON_SECRET;
+    const authHeader = req.headers.authorization;
 
-    // if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-    //     console.warn('Unauthorized attempt to access cron endpoint.');
-    //     return res.status(401).json({ error: 'Unauthorized' });
-    // }
+    if (!cronSecret) {
+        console.error('[CRON HANDLER] CRON_SECRET environment variable not set.');
+        return res.status(500).json({ error: 'Cron secret not configured' });
+    }
 
-    // console.log('[CRON HANDLER] Authorized request received.'); // Added log
+    if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
+        console.warn('[CRON HANDLER] Unauthorized attempt to access cron endpoint.');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
 
-    // try {
-    //     console.log('[CRON HANDLER] About to call await checkWebsites()...'); // Added log before call
-    //     // Await the completion of the checks to ensure logs are captured
-    //     // await checkWebsites(); // Temporarily commented out
-    //     console.log('[CRON HANDLER] checkWebsites() call skipped for debugging.'); // Updated log
-    //     // Send 200 OK now that the work is done (or attempted)
-    //     res.status(200).json({ message: 'Website check cycle completed (debug mode).' }); 
-    // } catch (error) {
-    //     // This catch block should now catch errors from within checkWebsites if they bubble up
-    //     console.error('[CRON HANDLER] CRITICAL ERROR during checkWebsites() execution:', error); // Enhanced log
-    //     res.status(500).json({ error: 'Failed to complete check cycle' });
-    // }
-    
-    // --- Simplified Debug Logic ---
-    console.log('[CRON HANDLER DEBUG] Entered simplified handler.');
-    res.status(200).json({ message: 'Cron handler reached (debug mode).' });
-    console.log('[CRON HANDLER DEBUG] Sent simplified response.');
+    console.log('[CRON HANDLER] Authorized request received.'); // Restore log
+
+    try {
+        console.log('[CRON HANDLER] About to call await checkWebsites()...'); // Restore log
+        // Await the completion of the checks to ensure logs are captured
+        await checkWebsites(); // Restore call
+        console.log('[CRON HANDLER] checkWebsites() completed.'); // Restore log
+        // Send 200 OK now that the work is done (or attempted)
+        res.status(200).json({ message: 'Website check cycle completed.' }); // Restore original message
+    } catch (error) {
+        // This catch block should now catch errors from within checkWebsites if they bubble up
+        console.error('[CRON HANDLER] CRITICAL ERROR during checkWebsites() execution:', error); // Restore log
+        res.status(500).json({ error: 'Failed to complete check cycle' }); // Restore original message
+    }
 });
 
 
