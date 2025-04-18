@@ -15,6 +15,12 @@ const app = express();
 console.log('[SERVER START] Express app created.'); // Added log
 const port = process.env.PORT || 3001;
 
+// Add request logger middleware VERY EARLY
+app.use((req, res, next) => {
+  console.log(`[REQUEST LOGGER] Received: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Middleware
 // Allow requests from frontend origin (env var for production, localhost for dev)
 const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
