@@ -1,12 +1,12 @@
 import axios from 'axios';
 import { getToken } from './authService'; // Use named import for getToken
 
-// Define the base URL for the API
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'; // Use env var or default
+// Define the base URL for the API using the same logic as authService
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''; // Use env var or default to relative path
 
 // Create an axios instance
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BASE_URL, // Set base URL (will be empty string for Vercel, http://localhost:3001 for local)
 });
 
 // Add an interceptor to include the auth token in requests
@@ -121,7 +121,11 @@ const monitoringService = {
   // --- Website CRUD ---
   async getWebsites(): Promise<Website[]> {
     try {
-      const response = await apiClient.get<Website[]>('/websites'); // Assuming GET /api/websites
+      // Path should be relative to the mount point + apiClient baseURL
+      // If baseURL is '/api', this becomes '/api/websites'
+      // If baseURL is '', this becomes '/api/websites' (handled by Vercel routing)
+      // If baseURL is 'http://localhost:3001', this becomes 'http://localhost:3001/api/websites'
+      const response = await apiClient.get<Website[]>('/api/websites'); 
       return response.data;
     } catch (error) {
       console.error('Error fetching websites:', error);
@@ -131,7 +135,7 @@ const monitoringService = {
 
   async getWebsite(id: number): Promise<Website> {
     try {
-      const response = await apiClient.get<Website>(`/websites/${id}`); // Assuming GET /api/websites/:id
+      const response = await apiClient.get<Website>(`/api/websites/${id}`); 
       return response.data;
     } catch (error) {
       console.error(`Error fetching website ${id}:`, error);
@@ -141,7 +145,7 @@ const monitoringService = {
 
   async addWebsite(websiteData: Omit<Website, 'id'>): Promise<Website> {
     try {
-      const response = await apiClient.post<Website>('/websites', websiteData); // Assuming POST /api/websites
+      const response = await apiClient.post<Website>('/api/websites', websiteData); 
       return response.data;
     } catch (error) {
       console.error('Error adding website:', error);
@@ -151,7 +155,7 @@ const monitoringService = {
 
   async updateWebsite(id: number, websiteData: Partial<Omit<Website, 'id'>>): Promise<Website> {
     try {
-      const response = await apiClient.put<Website>(`/websites/${id}`, websiteData); // Assuming PUT /api/websites/:id
+      const response = await apiClient.put<Website>(`/api/websites/${id}`, websiteData); 
       return response.data;
     } catch (error) {
       console.error(`Error updating website ${id}:`, error);
@@ -161,7 +165,7 @@ const monitoringService = {
 
   async deleteWebsite(id: number): Promise<void> {
     try {
-      await apiClient.delete(`/websites/${id}`); // Assuming DELETE /api/websites/:id
+      await apiClient.delete(`/api/websites/${id}`); 
     } catch (error) {
       console.error(`Error deleting website ${id}:`, error);
       throw error;
@@ -171,7 +175,7 @@ const monitoringService = {
   async checkWebsiteNow(id: number): Promise<void> {
      try {
        // Assuming an endpoint exists to trigger an immediate check
-       await apiClient.post(`/websites/${id}/check`);
+       await apiClient.post(`/api/websites/${id}/check`);
      } catch (error) {
        console.error(`Error triggering check for website ${id}:`, error);
        throw error;
@@ -179,9 +183,10 @@ const monitoringService = {
    },
 
   // --- Stats & Heartbeats ---
+  // These routes likely start with /api/stats, so they should be correct relative to baseURL
   async getRecentHeartbeats(monitorId: number, limit: number = 100): Promise<Heartbeat[]> {
     try {
-      const response = await apiClient.get<Heartbeat[]>(`/stats/monitor/${monitorId}/heartbeats`, {
+      const response = await apiClient.get<Heartbeat[]>(`/api/stats/monitor/${monitorId}/heartbeats`, {
         params: { limit },
       });
       return response.data;
@@ -193,7 +198,7 @@ const monitoringService = {
 
   async getMonitorStats(monitorId: number): Promise<MonitorStatsSummary> {
     try {
-      const response = await apiClient.get<MonitorStatsSummary>(`/stats/monitor/${monitorId}/summary`);
+      const response = await apiClient.get<MonitorStatsSummary>(`/api/stats/monitor/${monitorId}/summary`);
       return response.data;
     } catch (error) {
       console.error(`Error fetching stats summary for monitor ${monitorId}:`, error);
@@ -203,7 +208,7 @@ const monitoringService = {
 
   async getImportantEvents(monitorId: number, limit: number = 50): Promise<ImportantEvent[]> {
      try {
-       const response = await apiClient.get<ImportantEvent[]>(`/stats/monitor/${monitorId}/events`, {
+       const response = await apiClient.get<ImportantEvent[]>(`/api/stats/monitor/${monitorId}/events`, {
          params: { limit },
        });
        return response.data;
@@ -215,7 +220,7 @@ const monitoringService = {
 
    async getChartData(monitorId: number, period: string = '24h'): Promise<ChartDataPoint[]> {
      try {
-       const response = await apiClient.get<ChartDataPoint[]>(`/stats/monitor/${monitorId}/chart`, {
+       const response = await apiClient.get<ChartDataPoint[]>(`/api/stats/monitor/${monitorId}/chart`, {
          params: { period },
        });
        return response.data;
@@ -228,7 +233,7 @@ const monitoringService = {
    // --- Dashboard Summary ---
    async getDashboardSummary(): Promise<DashboardSummary> {
      try {
-       const response = await apiClient.get<DashboardSummary>('/stats/summary');
+       const response = await apiClient.get<DashboardSummary>('/api/stats/summary');
        return response.data;
      } catch (error) {
        console.error('Error fetching dashboard summary:', error);

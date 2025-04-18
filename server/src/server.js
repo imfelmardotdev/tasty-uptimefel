@@ -39,7 +39,7 @@ if (process.env.NODE_ENV === 'production') {
 app.use('/api/auth', authRouter); 
 app.use('/api/public', publicStatusRoutes);
 app.use('/api/stats', statsRoutes); 
-app.use('/api', websiteRoutes); // Handles /api/websites, /api/websites/:id, etc.
+app.use('/api/websites', websiteRoutes); // Mount website routes under /api/websites
 
 // Cron Job Endpoint (protected by secret)
 // This needs to be defined separately as it's a POST on a specific path
