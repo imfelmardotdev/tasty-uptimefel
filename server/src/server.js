@@ -22,13 +22,14 @@ if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, '../../dist')));
 }
 
-// API Routes
-app.use('/api/auth', authRouter); // Use authRouter for /api/auth prefix
-app.use('/api/public', publicStatusRoutes); // Add public routes
-app.use('/api/stats', statsRoutes); // Add stats routes (already includes auth middleware)
-app.use('/api', websiteRoutes); // Keep authenticated website routes (assuming these also need auth)
+// API Routes - Define most general '/api' first, then more specific sub-routes
+app.use('/api', websiteRoutes); // Handles /api/websites, /api/websites/:id, etc.
+app.use('/api/auth', authRouter); 
+app.use('/api/public', publicStatusRoutes);
+app.use('/api/stats', statsRoutes); 
 
 // Cron Job Endpoint (protected by secret)
+// This needs to be defined separately as it's a POST on a specific path
 app.post('/api/cron/run-checks', async (req, res) => {
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = req.headers.authorization;
