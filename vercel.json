@@ -28,7 +28,7 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/run-checks",
+      "path": "/api/cron/run-checks?secret=L/bfTbifW2KLiIDayJ3l4Ht3sf5Qfe+vFUUkJuGR7d0=",
       "schedule": "* * * * *"
     }
   ]

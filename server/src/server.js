@@ -47,24 +47,27 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/websites', websiteRoutes); // Mount website routes under /api/websites
 
 // Cron Job Endpoint (protected by secret)
-// This needs to be defined separately as it's a POST on a specific path
-app.post('/api/cron/run-checks', async (req, res) => { // Restore async
+// Vercel Crons use GET by default
+app.get('/api/cron/run-checks', async (req, res) => { // Changed from POST to GET
     console.log('[CRON HANDLER ENTRY] Handler function started.'); // Add log at the very start
 
+    // Note: Vercel Cron Pro can send custom headers/body for POST, but GET is simpler here.
+    // We'll use a query parameter for the secret instead of Authorization header.
     const cronSecret = process.env.CRON_SECRET;
-    const authHeader = req.headers.authorization;
+    const providedSecret = req.query.secret; // Get secret from query param ?secret=...
 
     if (!cronSecret) {
         console.error('[CRON HANDLER] CRON_SECRET environment variable not set.');
         return res.status(500).json({ error: 'Cron secret not configured' });
     }
 
-    if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-        console.warn('[CRON HANDLER] Unauthorized attempt to access cron endpoint.');
+    // Check secret from query parameter
+    if (!providedSecret || providedSecret !== cronSecret) {
+        console.warn('[CRON HANDLER] Unauthorized attempt to access cron endpoint (secret mismatch or missing).');
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    console.log('[CRON HANDLER] Authorized request received.'); // Restore log
+    console.log('[CRON HANDLER] Authorized request received (via query secret).'); // Updated log
 
     try {
         console.log('[CRON HANDLER] About to call await checkWebsites()...'); // Restore log
