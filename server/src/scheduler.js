@@ -13,10 +13,12 @@ const checkWebsites = async () => {
     let client; // Define client variable outside try block
 
     try {
+        console.log('[SCHEDULER] Attempting to acquire database client...'); // Added log
         // Acquire a client connection from the pool
         client = await getDatabase().connect();
-        console.log('[SCHEDULER] Database client acquired.');
+        console.log('[SCHEDULER] Database client acquired successfully.'); // Updated log
 
+        console.log('[SCHEDULER] Attempting to get all websites...'); // Added log
         // Get all websites using the acquired client
         const websites = await getAllWebsites(client);
         console.log(`[SCHEDULER] Found ${websites.length} websites to potentially check.`);
@@ -84,8 +86,14 @@ const checkWebsites = async () => {
     } finally {
         // Ensure the client is always released back to the pool
         if (client) {
-            client.release();
-            console.log('[SCHEDULER] Database client released.');
+            try { // Add try-catch around release just in case
+                client.release();
+                console.log('[SCHEDULER] Database client released successfully.');
+            } catch (releaseError) {
+                console.error('[SCHEDULER] ERROR releasing database client:', releaseError);
+            }
+        } else {
+            console.log('[SCHEDULER] No database client to release (was never acquired or error occurred before acquisition).'); // Added log
         }
         console.log(`[SCHEDULER] Finished website check cycle. Checked: ${checkedCount}, Errors: ${errorCount}`);
     }
