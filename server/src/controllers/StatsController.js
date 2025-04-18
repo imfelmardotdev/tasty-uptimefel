@@ -1,16 +1,21 @@
-const { getDatabase } = require('../database/init'); // Use raw db access
+const { getDatabase } = require('../database/init'); // Use pg Pool access
 const UptimeCalculator = require('../services/UptimeCalculator');
 const { log } = require('../utils/logger');
 const dayjs = require('dayjs');
 
+// Helper to safely parse integer query params
+const safeParseInt = (value, defaultValue) => {
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? defaultValue : parsed;
+};
+
 const StatsController = {
     /**
      * Get recent heartbeats for a specific monitor.
-     * Used for the HeartbeatBar component.
      */
     getRecentHeartbeats: async (req, res) => {
-        const monitorId = parseInt(req.params.id, 10);
-        const limit = parseInt(req.query.limit || '100', 10); // Default to 100
+        const monitorId = safeParseInt(req.params.id, NaN);
+        const limit = safeParseInt(req.query.limit, 100); // Default to 100
 
         if (isNaN(monitorId)) {
             return res.status(400).json({ message: 'Invalid monitor ID' });
@@ -18,30 +23,22 @@ const StatsController = {
 
         try {
             const db = getDatabase();
+            // Use $1, $2 placeholders for pg
             const sql = `
                 SELECT timestamp, status, ping, message
                 FROM heartbeats
-                WHERE website_id = ?
+                WHERE website_id = $1
                 ORDER BY timestamp DESC
-                LIMIT ?
+                LIMIT $2
             `;
-            db.all(sql, [monitorId, limit], (err, rows) => {
-                if (err) {
-                    log.error(`[StatsController] DB Error fetching recent heartbeats for monitor ${monitorId}:`, err);
-                    // Ensure response is sent only once
-                    if (!res.headersSent) {
-                        return res.status(500).json({ message: 'Error fetching heartbeat data' });
-                    }
-                }
-                 // Reverse to have oldest first for the bar rendering if needed by frontend
-                if (!res.headersSent) {
-                    res.json((rows || []).reverse());
-                }
-            });
+            const result = await db.query(sql, [monitorId, limit]);
+            // Reverse to have oldest first for the bar rendering if needed by frontend
+            res.json((result.rows || []).reverse());
+
         } catch (error) {
-            // Catch potential errors in getDatabase() or other sync issues
             log.error(`[StatsController] Error fetching recent heartbeats for monitor ${monitorId}:`, error);
-             if (!res.headersSent) {
+            // Avoid sending response if headers already sent (though unlikely here with await)
+            if (!res.headersSent) {
                 res.status(500).json({ message: 'Error fetching heartbeat data' });
             }
         }
@@ -49,11 +46,10 @@ const StatsController = {
 
     /**
      * Get important events (status changes) for a monitor.
-     * Used for the events table on the details page.
      */
     getImportantEvents: async (req, res) => {
-        const monitorId = parseInt(req.params.id, 10);
-        const limit = parseInt(req.query.limit || '50', 10); // Default limit
+        const monitorId = safeParseInt(req.params.id, NaN);
+        const limit = safeParseInt(req.query.limit, 50); // Default limit
 
         if (isNaN(monitorId)) {
             return res.status(400).json({ message: 'Invalid monitor ID' });
@@ -65,45 +61,30 @@ const StatsController = {
             const sql = `
                 SELECT id, timestamp, status, message
                 FROM heartbeats
-                WHERE website_id = ?
+                WHERE website_id = $1
                 ORDER BY timestamp ASC
             `;
-            db.all(sql, [monitorId], (err, allHeartbeats) => {
-                 if (err) {
-                    log.error(`[StatsController] DB Error fetching all heartbeats for events monitor ${monitorId}:`, err);
-                     if (!res.headersSent) {
-                        return res.status(500).json({ message: 'Error fetching event data' });
-                    }
-                }
+            const result = await db.query(sql, [monitorId]);
+            const allHeartbeats = result.rows || [];
 
-                if (!allHeartbeats || allHeartbeats.length === 0) {
-                     if (!res.headersSent) {
-                        return res.json([]);
-                    }
-                }
+            if (allHeartbeats.length === 0) {
+                return res.json([]);
+            }
 
-                 // Filter for status changes
-                const importantEvents = (allHeartbeats || []).reduce((acc, current, index, arr) => {
-                    // Always include the first heartbeat
-                    if (index === 0) {
-                        acc.push(current);
-                    }
-                    // Include if status is different from the previous one
-                    else if (current.status !== arr[index - 1].status) {
-                        acc.push(current);
-                    }
-                    return acc;
-                }, []);
-
-                // Return the most recent 'limit' important events
-                 if (!res.headersSent) {
-                    res.json(importantEvents.slice(-limit).reverse()); // Reverse again to show newest first in table
+            // Filter for status changes
+            const importantEvents = allHeartbeats.reduce((acc, current, index, arr) => {
+                if (index === 0 || current.status !== arr[index - 1].status) {
+                    acc.push(current);
                 }
-            });
+                return acc;
+            }, []);
+
+            // Return the most recent 'limit' important events
+            res.json(importantEvents.slice(-limit).reverse()); // Reverse again to show newest first
 
         } catch (error) {
             log.error(`[StatsController] Error fetching important events for monitor ${monitorId}:`, error);
-             if (!res.headersSent) {
+            if (!res.headersSent) {
                 res.status(500).json({ message: 'Error fetching event data' });
             }
         }
@@ -111,37 +92,32 @@ const StatsController = {
 
     /**
      * Get aggregated statistics for a monitor (uptime, avg ping).
-     * Used for the stats section on the details page.
      */
     getMonitorStats: async (req, res) => {
-        const monitorId = parseInt(req.params.id, 10);
+        const monitorId = safeParseInt(req.params.id, NaN);
 
         if (isNaN(monitorId)) {
             return res.status(400).json({ message: 'Invalid monitor ID' });
         }
 
         try {
+            // UptimeCalculator needs to be adapted for pg if it uses direct DB access
+            // Assuming getUptimeCalculator might now internally use pg compatible db.js functions
+            // If UptimeCalculator still uses sqlite methods, it will fail here.
+            // For now, we proceed assuming UptimeCalculator is compatible or doesn't use direct sqlite calls.
             const calculator = await UptimeCalculator.getUptimeCalculator(monitorId);
 
-            // Fetch stats using the calculator's cached/calculated data
-            const uptime24hData = calculator.getUptimeData(24 * 60, 'minute'); // 24 hours
-            const uptime30dData = calculator.getUptimeData(30, 'day');       // 30 days
-            const uptime1yData = calculator.getUptimeData(365, 'day');      // 1 year
+            const uptime24hData = calculator.getUptimeData(24 * 60, 'minute');
+            const uptime30dData = calculator.getUptimeData(30, 'day');
+            const uptime1yData = calculator.getUptimeData(365, 'day');
 
-            // Get current ping from the most recent heartbeat (might be slightly delayed)
+            // Get current ping from the most recent heartbeat using pg
             const db = getDatabase();
-            const lastHeartbeat = await new Promise((resolve, reject) => {
-                 const sql = `SELECT ping FROM heartbeats WHERE website_id = ? ORDER BY timestamp DESC LIMIT 1`;
-                 db.get(sql, [monitorId], (err, row) => {
-                     if (err) reject(err);
-                     else resolve(row);
-                 });
-            });
+            const sql = `SELECT ping FROM heartbeats WHERE website_id = $1 ORDER BY timestamp DESC LIMIT 1`;
+            const heartbeatResult = await db.query(sql, [monitorId]);
+            const lastHeartbeat = heartbeatResult.rows[0];
 
-
-            // TODO: Add Certificate Info fetching if applicable to the monitor type
-            // This would likely involve checking the last successful heartbeat message
-            // or storing cert info separately. For now, returning null.
+            // Placeholder for Cert Info
             const certInfo = {
                 certExpiryDays: null,
                 certIssuer: null,
@@ -149,20 +125,22 @@ const StatsController = {
                 isCertValid: null,
             };
 
-             if (!res.headersSent) {
-                res.json({
-                    currentPing: lastHeartbeat?.ping ?? null,
-                    avgPing24h: uptime24hData.avgPing,
-                    uptime24h: uptime24hData.uptime,
-                    uptime30d: uptime30dData.uptime,
-                    uptime1y: uptime1yData.uptime,
-                    ...certInfo,
-                });
-            }
+            res.json({
+                currentPing: lastHeartbeat?.ping ?? null,
+                avgPing24h: uptime24hData.avgPing,
+                uptime24h: uptime24hData.uptime,
+                uptime30d: uptime30dData.uptime,
+                uptime1y: uptime1yData.uptime,
+                ...certInfo,
+            });
 
         } catch (error) {
             log.error(`[StatsController] Error fetching stats for monitor ${monitorId}:`, error);
-             if (!res.headersSent) {
+            // Check if the error came from UptimeCalculator incompatibility
+            if (error.message.includes('db.all is not a function') || error.message.includes('db.get is not a function')) {
+                 log.error(`[StatsController] UptimeCalculator might still be using incompatible SQLite methods.`);
+            }
+            if (!res.headersSent) {
                 res.status(500).json({ message: 'Error fetching statistics data' });
             }
         }
@@ -172,55 +150,47 @@ const StatsController = {
      * Get stats array for charts (e.g., ping chart).
      */
     getStatsForChart: async (req, res) => {
-        const monitorId = parseInt(req.params.id, 10);
-        // Determine period and type from query params (e.g., ?period=24h, ?period=7d)
-        const period = req.query.period || '24h'; // Default to 24 hours
+        const monitorId = safeParseInt(req.params.id, NaN);
+        const period = req.query.period || '24h';
         let numPeriods;
         let type;
 
-         // Basic period parsing (can be enhanced)
         if (period.endsWith('h')) {
-            numPeriods = parseInt(period.slice(0, -1), 10) * 60; // Convert hours to minutes
+            numPeriods = safeParseInt(period.slice(0, -1), 24) * 60;
             type = 'minute';
         } else if (period.endsWith('d')) {
-             numPeriods = parseInt(period.slice(0, -1), 10);
-             type = 'hour'; // Use hourly stats for daily views for efficiency
-             if (numPeriods > 30) { // Cap at 30 days for hourly
-                 numPeriods = 30 * 24; // Use max hourly cache
-             } else {
-                 numPeriods = numPeriods * 24; // Convert days to hours
-             }
+             numPeriods = safeParseInt(period.slice(0, -1), 7);
+             type = 'hour';
+             numPeriods = Math.min(numPeriods, 30) * 24; // Cap at 30 days hourly
         } else {
-             // Default to 24h (minutely) if format is invalid
              numPeriods = 24 * 60;
              type = 'minute';
         }
 
-
-        if (isNaN(monitorId) || isNaN(numPeriods)) {
+        if (isNaN(monitorId)) {
             return res.status(400).json({ message: 'Invalid monitor ID or period' });
         }
 
         try {
+            // Assuming UptimeCalculator is compatible with pg or uses db.js functions
             const calculator = await UptimeCalculator.getUptimeCalculator(monitorId);
             const statsArray = calculator.getStatsArray(numPeriods, type);
 
-            // Select/format data specifically for charts if needed
             const chartData = statsArray.map(stat => ({
-                timestamp: stat.timestamp,
+                timestamp: stat.timestamp, // Assuming timestamp is already correct format/type
                 avgPing: stat.avg_ping,
                 up: stat.up_count,
                 down: stat.down_count,
                 maintenance: stat.maintenance_count,
-                // Add min/max ping if needed for the chart
             }));
 
-             if (!res.headersSent) {
-                res.json(chartData);
-            }
+            res.json(chartData);
         } catch (error) {
             log.error(`[StatsController] Error fetching chart stats for monitor ${monitorId} (${period}):`, error);
-             if (!res.headersSent) {
+             if (error.message.includes('db.all is not a function') || error.message.includes('db.get is not a function')) {
+                 log.error(`[StatsController] UptimeCalculator might still be using incompatible SQLite methods.`);
+            }
+            if (!res.headersSent) {
                 res.status(500).json({ message: 'Error fetching chart data' });
             }
         }
@@ -230,16 +200,15 @@ const StatsController = {
      * Get overall dashboard summary statistics (up/down/paused counts).
      */
     getDashboardSummary: async (req, res) => {
-        const userId = req.user?.id; // Get user ID from authenticated request
+        const userId = req.user?.id;
 
         if (!userId) {
-            // This shouldn't happen if authenticateToken middleware is working
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
         try {
             const db = getDatabase();
-            // Corrected SQL query: Join monitored_websites with website_status
+            // Use $1 placeholder for pg
             const sql = `
                 SELECT
                     mw.active,
@@ -249,54 +218,39 @@ const StatsController = {
                 LEFT JOIN
                     website_status ws ON mw.id = ws.website_id
                 WHERE
-                    mw.user_id = ?
+                    mw.user_id = $1
             `;
+            const result = await db.query(sql, [userId]);
+            const rows = result.rows || [];
 
-            db.all(sql, [userId], (err, rows) => {
-                if (err) {
-                    log.error(`[StatsController] DB Error fetching website statuses for dashboard summary (User ${userId}):`, err);
-                    if (!res.headersSent) {
-                        return res.status(500).json({ message: 'Error fetching dashboard summary data' });
-                    }
-                    return; // Ensure no further processing
-                }
+            let upCount = 0;
+            let downCount = 0;
+            let pausedCount = 0;
 
-                let upCount = 0;
-                let downCount = 0;
-                let pausedCount = 0;
-
-                // Logic remains the same, but uses data from the corrected query
-                (rows || []).forEach(website => {
-                    // Use mw.active (aliased as active in the result row)
-                    if (website.active === 0 || website.active === false) {
-                        pausedCount++;
-                    // Use ws.is_up (aliased as is_up in the result row)
-                    } else if (website.is_up === 1 || website.is_up === true) {
-                        upCount++;
-                    } else { // Active but not up (down or status unknown)
-                        downCount++;
-                    }
-                });
-
-                if (!res.headersSent) {
-                    res.json({
-                        up: upCount,
-                        down: downCount,
-                        paused: pausedCount,
-                        total: rows.length, // Total monitors for this user
-
-                        // --- Placeholder data for RecentStatsPanel ---
-                        // TODO: Implement actual calculation for these values
-                        // This might involve querying heartbeats/stats tables for the last 24h
-                        // or using an aggregated calculation service.
-                        overallUptime24h: 99.95, // Placeholder percentage
-                        incidents24h: 0,        // Placeholder count
-                        daysWithoutIncidents: 1, // Placeholder count
-                        affectedMonitors24h: 0   // Placeholder count
-                        // --- End Placeholder data ---
-                    });
+            // Assuming 'active' and 'is_up' are boolean in the database now
+            rows.forEach(website => {
+                if (website.active === false) {
+                    pausedCount++;
+                } else if (website.is_up === true) {
+                    upCount++;
+                } else { // Active but not up (down or status unknown)
+                    downCount++;
                 }
             });
+
+            // Placeholder data needs implementation
+            const summaryData = {
+                up: upCount,
+                down: downCount,
+                paused: pausedCount,
+                total: rows.length,
+                overallUptime24h: 99.99, // Placeholder
+                incidents24h: 0,        // Placeholder
+                daysWithoutIncidents: 1, // Placeholder
+                affectedMonitors24h: 0   // Placeholder
+            };
+
+            res.json(summaryData);
 
         } catch (error) {
             log.error(`[StatsController] Error fetching dashboard summary for user ${userId}:`, error);

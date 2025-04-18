@@ -14,14 +14,6 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // Middleware
-// Add this logging middleware FIRST to see all incoming requests
-app.use((req, res, next) => {
-  console.log(`[Request Logger] Received: ${req.method} ${req.originalUrl}`);
-  // Optional: Log headers if needed for deep debugging
-  // console.log('[Request Logger] Headers:', JSON.stringify(req.headers, null, 2)); 
-  next();
-});
-
 // Explicitly allow requests from the Vite dev server origin
 const corsOptions = {
   origin: 'http://localhost:5173', // Allow your frontend origin
