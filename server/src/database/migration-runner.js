@@ -1,15 +1,17 @@
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const { Pool } = require('pg'); // Import Pool type for type hinting (optional)
 
 class MigrationRunner {
     /**
      * Creates a new MigrationRunner instance
-     * @param {string} dbPath Path to SQLite database file
+     * @param {Pool} dbPool The shared pg Pool instance
      */
-    constructor(dbPath) {
-        this.dbPath = dbPath;
-        this.db = new sqlite3.Database(dbPath);
+    constructor(dbPool) {
+        if (!dbPool) {
+            throw new Error("A pg Pool instance must be provided to MigrationRunner.");
+        }
+        this.db = dbPool; // Use the passed-in pool
         this.migrations = [];
         this.loadMigrations();
     }
@@ -19,7 +21,7 @@ class MigrationRunner {
      */
     loadMigrations() {
         const migrationsDir = path.join(__dirname, 'migrations');
-        
+
         if (!fs.existsSync(migrationsDir)) {
             console.log('No migrations directory found.');
             return;
@@ -31,10 +33,11 @@ class MigrationRunner {
 
         this.migrations = files.map(file => {
             const migration = require(path.join(migrationsDir, file));
-            // Add filename for logging
             migration.filename = file;
-            if (!migration.up || !migration.down || !migration.MIGRATION_VERSION) {
-                throw new Error(`Invalid migration file: ${file}`);
+            // Ensure migration files export 'up', 'down', and 'MIGRATION_VERSION'
+            // The 'up' and 'down' functions should now expect a pg Pool instance
+            if (typeof migration.up !== 'function' || typeof migration.down !== 'function' || !migration.MIGRATION_VERSION) {
+                throw new Error(`Invalid migration file structure: ${file}. Must export up, down, and MIGRATION_VERSION.`);
             }
             return migration;
         });
@@ -45,19 +48,19 @@ class MigrationRunner {
      * @returns {Promise<void>}
      */
     async ensureHistoryTable() {
-        return new Promise((resolve, reject) => {
-            const sql = `
-                CREATE TABLE IF NOT EXISTS migration_history (
-                    version TEXT PRIMARY KEY NOT NULL,
-                    filename TEXT NOT NULL,
-                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            `;
-            this.db.run(sql, (err) => {
-                if (err) reject(new Error(`Failed to create migration_history table: ${err.message}`));
-                else resolve();
-            });
-        });
+        // Use PostgreSQL syntax
+        const sql = `
+            CREATE TABLE IF NOT EXISTS migration_history (
+                version TEXT PRIMARY KEY NOT NULL,
+                filename TEXT NOT NULL,
+                applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        `;
+        try {
+            await this.db.query(sql);
+        } catch (err) {
+            throw new Error(`Failed to create migration_history table: ${err.message}`);
+        }
     }
 
     /**
@@ -65,13 +68,18 @@ class MigrationRunner {
      * @returns {Promise<string>} Current version or '000' if no migrations applied.
      */
     async getCurrentVersion() {
-        return new Promise((resolve, reject) => {
-            const sql = `SELECT version FROM migration_history ORDER BY version DESC LIMIT 1`;
-            this.db.get(sql, (err, row) => {
-                if (err) reject(new Error(`Failed to get current migration version: ${err.message}`));
-                else resolve(row?.version || '000');
-            });
-        });
+        const sql = `SELECT version FROM migration_history ORDER BY version DESC LIMIT 1`;
+        try {
+            const result = await this.db.query(sql);
+            return result.rows[0]?.version || '000';
+        } catch (err) {
+            // Handle case where table might not exist yet (though ensureHistoryTable should prevent this)
+            if (err.code === '42P01') { // 'undefined_table' error code in PostgreSQL
+                console.warn('migration_history table not found, assuming version 000.');
+                return '000';
+            }
+            throw new Error(`Failed to get current migration version: ${err.message}`);
+        }
     }
 
     /**
@@ -81,13 +89,12 @@ class MigrationRunner {
      * @returns {Promise<void>}
      */
     async recordMigration(version, filename) {
-         return new Promise((resolve, reject) => {
-            const sql = `INSERT INTO migration_history (version, filename) VALUES (?, ?)`;
-            this.db.run(sql, [version, filename], (err) => {
-                if (err) reject(new Error(`Failed to record migration ${version}: ${err.message}`));
-                else resolve();
-            });
-         });
+         const sql = `INSERT INTO migration_history (version, filename) VALUES ($1, $2)`;
+         try {
+             await this.db.query(sql, [version, filename]);
+         } catch (err) {
+             throw new Error(`Failed to record migration ${version}: ${err.message}`);
+         }
     }
 
      /**
@@ -96,14 +103,13 @@ class MigrationRunner {
      * @returns {Promise<void>}
      */
      async removeMigrationRecord(version) {
-         return new Promise((resolve, reject) => {
-             const sql = `DELETE FROM migration_history WHERE version = ?`;
-             this.db.run(sql, [version], (err) => {
-                 // Log error but don't necessarily reject, as rollback might still be needed
-                 if (err) console.error(`Failed to remove migration record ${version}: ${err.message}`);
-                 resolve();
-             });
-         });
+         const sql = `DELETE FROM migration_history WHERE version = $1`;
+         try {
+             await this.db.query(sql, [version]);
+         } catch (err) {
+             // Log error but don't necessarily reject, as rollback might still be needed
+             console.error(`Failed to remove migration record ${version}: ${err.message}`);
+         }
      }
 
     /**
@@ -111,6 +117,7 @@ class MigrationRunner {
      */
     async runMigrations() {
         console.log('Starting database migrations...');
+        let client = null; // Use a single client for transactional behavior
         try {
             // Ensure history table exists before proceeding
             await this.ensureHistoryTable();
@@ -118,71 +125,84 @@ class MigrationRunner {
             const currentVersion = await this.getCurrentVersion();
             console.log('Current database version:', currentVersion);
 
-            // Find migrations that need to be run (version > currentVersion)
-            const pendingMigrations = this.migrations.filter(m => 
+            const pendingMigrations = this.migrations.filter(m =>
                 m.MIGRATION_VERSION > currentVersion
-            );
+            ); // Sorting is handled by loadMigrations
 
             if (pendingMigrations.length === 0) {
                 console.log('Database is up to date.');
                 return;
             }
 
-            // Sort migrations by version
-            // No need to sort here as loadMigrations already sorts by filename/version prefix
+            // Get a client from the pool for the migration sequence
+            client = await this.db.connect();
+            await client.query('BEGIN'); // Start transaction
 
             // Run migrations in sequence
             for (const migration of pendingMigrations) {
                 const version = migration.MIGRATION_VERSION;
                 console.log(`Running migration ${version} (${migration.filename})...`);
                 try {
-                    // Execute the migration's up function
-                    await migration.up(this.db);
+                    // Execute the migration's up function, passing the client
+                    await migration.up(client); // Pass client for transactional consistency
 
-                    // Record successful migration in history table
-                    await this.recordMigration(version, migration.filename);
+                    // Record successful migration in history table (using the same client)
+                    await this.recordMigrationInTransaction(client, version, migration.filename);
 
                     console.log(`Migration ${version} completed successfully.`);
                 } catch (error) {
                     console.error(`Migration ${version} failed:`, error);
+                    await client.query('ROLLBACK'); // Rollback transaction on error
 
-                    // Try to roll back this migration
-                    console.log(`Attempting to roll back migration ${version}...`);
+                    // Attempt to run the down migration (outside the failed transaction)
+                    console.log(`Attempting to roll back migration ${version} schema changes...`);
                     try {
-                        await migration.down(this.db);
-                        // If rollback succeeds, remove the record (though it shouldn't exist yet)
-                        await this.removeMigrationRecord(version);
-                        console.log(`Rolled back migration ${version}.`);
+                        // Need a new client or use the pool directly for down?
+                        // Let's assume down can run independently for now.
+                        // If down needs transaction, this needs more complex handling.
+                        await migration.down(this.db); // Use pool for down
+                        console.log(`Schema rollback for migration ${version} attempted.`);
                     } catch (rollbackError) {
-                        console.error(`Rollback for migration ${version} failed:`, rollbackError);
+                        console.error(`Schema rollback attempt for migration ${version} failed:`, rollbackError);
                         console.error('Database may be in an inconsistent state.');
                     }
-                    throw error;
+                    throw error; // Re-throw original error
                 }
             }
 
+            await client.query('COMMIT'); // Commit transaction if all migrations succeed
             console.log('All migrations completed successfully.');
 
         } catch (error) {
             console.error('Migration process failed:', error);
-            throw error;
+            // Ensure rollback if transaction was started but not committed/rolled back
+            if (client) {
+                try { await client.query('ROLLBACK'); } catch (rbError) { /* Ignore rollback error */ }
+            }
+            throw error; // Re-throw error to signal failure
+        } finally {
+            if (client) {
+                client.release(); // Release client back to the pool
+            }
         }
     }
 
-    /**
-     * Closes the database connection
-     */
-    async close() {
-        return new Promise((resolve, reject) => {
-            this.db.close((err) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve();
-                }
-            });
-        });
-    }
+     /**
+      * Helper to record migration within an existing transaction.
+      * @param {import('pg').PoolClient} client The active transaction client
+      * @param {string} version
+      * @param {string} filename
+      */
+     async recordMigrationInTransaction(client, version, filename) {
+         const sql = `INSERT INTO migration_history (version, filename) VALUES ($1, $2)`;
+         try {
+             await client.query(sql, [version, filename]);
+         } catch (err) {
+             throw new Error(`Failed to record migration ${version} in transaction: ${err.message}`);
+         }
+     }
+
+    // No close() method needed - the pool is managed externally
 }
 
 module.exports = MigrationRunner;

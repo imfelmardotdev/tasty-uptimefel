@@ -1,55 +1,64 @@
-module.exports = {
-  MIGRATION_VERSION: "005",
+/**
+ * Migration to add stat_hourly table for PostgreSQL
+ */
+const UP_MIGRATION = `
+-- Create stat_hourly table
+CREATE TABLE IF NOT EXISTS stat_hourly (
+    id SERIAL PRIMARY KEY,
+    website_id INTEGER NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL, -- Start of the hour
+    up_count INTEGER NOT NULL DEFAULT 0,
+    down_count INTEGER NOT NULL DEFAULT 0,
+    maintenance_count INTEGER NOT NULL DEFAULT 0,
+    avg_ping REAL, -- Or DOUBLE PRECISION
+    min_ping INTEGER,
+    max_ping INTEGER,
+    extras JSONB, -- Use JSONB for efficient JSON storage in PostgreSQL
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (website_id) REFERENCES monitored_websites(id) ON DELETE CASCADE, -- Removed ON UPDATE CASCADE
+    UNIQUE (website_id, timestamp) -- Prevent duplicate entries
+);
 
-  up: async (db) => {
-    return new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run(
-          `CREATE TABLE stat_hourly (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            website_id INTEGER NOT NULL,
-            timestamp INTEGER NOT NULL, -- Unix timestamp (seconds) representing the start of the hour
-            up_count INTEGER NOT NULL DEFAULT 0,
-            down_count INTEGER NOT NULL DEFAULT 0,
-            maintenance_count INTEGER NOT NULL DEFAULT 0,
-            avg_ping REAL,
-            min_ping INTEGER,
-            max_ping INTEGER,
-            extras TEXT, -- For storing additional JSON data if needed
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (website_id) REFERENCES monitored_websites(id) ON UPDATE CASCADE ON DELETE CASCADE, -- Corrected table name
-            UNIQUE (website_id, timestamp) -- Prevent duplicate entries
-          )`,
-          (err) => {
-            if (err) return reject(err);
-          }
-        );
+-- Create indices
+CREATE INDEX IF NOT EXISTS idx_stat_hourly_website_id_timestamp ON stat_hourly (website_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_stat_hourly_timestamp ON stat_hourly (timestamp);
+`;
 
-        db.run(
-          `CREATE INDEX idx_stat_hourly_website_id_timestamp ON stat_hourly (website_id, timestamp)`,
-          (err) => {
-            if (err) return reject(err);
-          }
-        );
+const DOWN_MIGRATION = `
+-- Drop stat_hourly table
+DROP TABLE IF EXISTS stat_hourly;
+`;
 
-        db.run(
-          `CREATE INDEX idx_stat_hourly_timestamp ON stat_hourly (timestamp)`,
-          (err) => {
-            if (err) return reject(err);
-            resolve(); // Resolve after the last command completes
-          }
-        );
-      });
-    });
-  },
-
-  down: async (db) => {
-    return new Promise((resolve, reject) => {
-      db.run(`DROP TABLE stat_hourly`, (err) => {
-        if (err) return reject(err);
-        resolve();
-      });
-    });
-  },
+/**
+ * Applies the migration
+ * @param {import('pg').PoolClient | import('pg').Pool} db - The pg Pool instance or a PoolClient for transactions
+ * @returns {Promise<void>}
+ */
+exports.up = async (db) => {
+    try {
+        const statements = UP_MIGRATION.split(';').map(s => s.trim()).filter(s => s.length > 0);
+        for (const statement of statements) {
+            await db.query(statement);
+        }
+    } catch (err) {
+        console.error('Migration 005 (up) failed:', err);
+        throw err;
+    }
 };
+
+/**
+ * Reverts the migration
+ * @param {import('pg').PoolClient | import('pg').Pool} db - The pg Pool instance or a PoolClient for transactions
+ * @returns {Promise<void>}
+ */
+exports.down = async (db) => {
+    try {
+        await db.query(DOWN_MIGRATION);
+    } catch (err) {
+        console.error('Migration 005 (down) failed:', err);
+        throw err;
+    }
+};
+
+exports.MIGRATION_VERSION = "005";

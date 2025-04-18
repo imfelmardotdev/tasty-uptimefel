@@ -1,17 +1,22 @@
-const { getDatabase } = require('./init');
+const { getDatabase } = require('./init'); // Gets the pg Pool instance
+
+// Helper function to map SQLite boolean (1/0) to JS boolean
+const toBoolean = (value) => value === 1 || value === true;
 
 /**
  * Finds a user by email
  * @param {string} email User email
  * @returns {Promise<object|null>} User object or null
  */
-const findUserByEmail = (email) => {
-    return new Promise((resolve, reject) => {
-        getDatabase().get('SELECT * FROM users WHERE email = ?', [email], (err, row) => {
-            if (err) reject(err);
-            else resolve(row || null);
-        });
-    });
+const findUserByEmail = async (email) => {
+    const sql = 'SELECT * FROM users WHERE email = $1';
+    try {
+        const result = await getDatabase().query(sql, [email]);
+        return result.rows[0] || null;
+    } catch (err) {
+        console.error(`Error finding user by email (${email}):`, err);
+        throw err; // Re-throw error for controller to handle
+    }
 };
 
 /**
@@ -19,65 +24,77 @@ const findUserByEmail = (email) => {
  * @param {number} id User ID
  * @returns {Promise<object|null>} User object or null
  */
-const findUserById = (id) => {
-    return new Promise((resolve, reject) => {
-        getDatabase().get('SELECT id, email FROM users WHERE id = ?', [id], (err, row) => {
-            if (err) reject(err);
-            else resolve(row || null);
-        });
-    });
+const findUserById = async (id) => {
+    const sql = 'SELECT id, email FROM users WHERE id = $1';
+    try {
+        const result = await getDatabase().query(sql, [id]);
+        return result.rows[0] || null;
+    } catch (err) {
+        console.error(`Error finding user by id (${id}):`, err);
+        throw err;
+    }
 };
 
 /**
  * Creates a new user
  * @param {string} email User email
  * @param {string} passwordHash Hashed password
- * @returns {Promise<object>} Created user object
+ * @returns {Promise<object>} Created user object { id, email }
  */
-const createUser = (email, passwordHash) => {
-    return new Promise((resolve, reject) => {
-        const sql = 'INSERT INTO users (email, password_hash) VALUES (?, ?)';
-        getDatabase().run(sql, [email, passwordHash], function(err) {
-            if (err) {
-                if (err.code === 'SQLITE_CONSTRAINT' && err.message.includes('UNIQUE constraint failed: users.email')) {
-                    reject(new Error('Email already exists'));
-                } else {
-                    reject(err);
-                }
-            } else {
-                resolve({ id: this.lastID, email });
-            }
-        });
-    });
+const createUser = async (email, passwordHash) => {
+    // Use RETURNING id to get the new user's ID
+    const sql = 'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id';
+    try {
+        const result = await getDatabase().query(sql, [email, passwordHash]);
+        if (result.rows.length > 0) {
+            return { id: result.rows[0].id, email };
+        } else {
+            throw new Error('User creation failed, no ID returned.');
+        }
+    } catch (err) {
+        // Check for PostgreSQL unique violation error code '23505'
+        if (err.code === '23505' && err.constraint === 'users_email_key') { // Assuming constraint name is users_email_key
+             throw new Error('Email already exists');
+        } else {
+            console.error(`Error creating user (${email}):`, err);
+            throw err;
+        }
+    }
 };
 
 /**
  * Gets all websites from the database (regardless of user)
  * @returns {Promise<Array<object>>}
  */
- const getAllWebsites = () => {
-     return new Promise((resolve, reject) => {
-         // Explicitly select ALL columns from monitored_websites needed by scheduler/checker
-         // and alias monitor_type
-         const sql = `
-             SELECT
-                 w.id, w.name, w.url, w.check_interval, w.timeout_ms, w.retry_count,
-                 w.accepted_status_codes, w.monitor_method, w.follow_redirects,
-                 w.max_redirects, w.user_id, w.active, w.monitor_type as monitorType, -- Alias
-                 w.monitor_config, -- Ensure this is selected
-                 w.created_at, w.updated_at,
-                 -- Select relevant status columns
-                 ws.last_check_time, ws.last_status_code, ws.last_response_time,
-                 ws.is_up, ws.last_error, ws.total_checks, ws.total_successful_checks
-             FROM monitored_websites w
-             LEFT JOIN website_status ws ON w.id = ws.website_id
-             ORDER BY w.created_at DESC
-         `;
-         getDatabase().all(sql, (err, rows) => {
-             if (err) reject(err);
-             else resolve(rows || []);
-         });
-     });
+ const getAllWebsites = async () => {
+     // Adjusted SQL for PostgreSQL - alias columns explicitly if needed
+     // Assuming table/column names are compatible or adjusted in migrations
+     const sql = `
+         SELECT
+             w.id, w.name, w.url, w.check_interval, w.timeout_ms, w.retry_count,
+             w.accepted_status_codes, w.monitor_method, w.follow_redirects,
+             w.max_redirects, w.user_id, w.active, w.monitor_type as "monitorType", -- Quoted alias
+             w.monitor_config,
+             w.created_at, w.updated_at,
+             ws.last_check_time, ws.last_status_code, ws.last_response_time,
+             ws.is_up, ws.last_error, ws.total_checks, ws.total_successful_checks
+         FROM monitored_websites w
+         LEFT JOIN website_status ws ON w.id = ws.website_id
+         ORDER BY w.created_at DESC
+     `;
+     try {
+         const result = await getDatabase().query(sql);
+         // Map boolean fields if necessary (assuming 'active', 'is_up', 'follow_redirects' are boolean in PG)
+         return result.rows.map(row => ({
+             ...row,
+             // follow_redirects: toBoolean(row.follow_redirects), // Example if needed
+             // active: toBoolean(row.active),
+             // is_up: toBoolean(row.is_up)
+         })) || [];
+     } catch (err) {
+         console.error('Error getting all websites:', err);
+         throw err;
+     }
  };
 
 /**
@@ -85,27 +102,33 @@ const createUser = (email, passwordHash) => {
  * @param {number} userId User ID
  * @returns {Promise<Array<object>>}
  */
-const getAllWebsitesByUser = (userId) => {
-    return new Promise((resolve, reject) => {
-        // Explicitly select columns and alias monitor_type to monitorType
-        const sql = `
-            SELECT 
-                w.id, w.name, w.url, w.check_interval, w.timeout_ms, w.retry_count,
-                w.accepted_status_codes, w.monitor_method, w.follow_redirects,
-                w.max_redirects, w.user_id, w.active, w.monitor_type as monitorType, 
-                w.monitor_config, w.created_at, w.updated_at,
-                ws.last_check_time, ws.last_status_code, ws.last_response_time,
-                ws.is_up, ws.last_error, ws.total_checks, ws.total_successful_checks
-            FROM monitored_websites w
-            LEFT JOIN website_status ws ON w.id = ws.website_id
-            WHERE w.user_id = ?
-            ORDER BY w.created_at DESC
-        `;
-        getDatabase().all(sql, [userId], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows || []);
-        });
-    });
+const getAllWebsitesByUser = async (userId) => {
+    const sql = `
+        SELECT
+            w.id, w.name, w.url, w.check_interval, w.timeout_ms, w.retry_count,
+            w.accepted_status_codes, w.monitor_method, w.follow_redirects,
+            w.max_redirects, w.user_id, w.active, w.monitor_type as "monitorType", -- Quoted alias
+            w.monitor_config, w.created_at, w.updated_at,
+            ws.last_check_time, ws.last_status_code, ws.last_response_time,
+            ws.is_up, ws.last_error, ws.total_checks, ws.total_successful_checks
+        FROM monitored_websites w
+        LEFT JOIN website_status ws ON w.id = ws.website_id
+        WHERE w.user_id = $1
+        ORDER BY w.created_at DESC
+    `;
+    try {
+        const result = await getDatabase().query(sql, [userId]);
+         // Map boolean fields if necessary
+         return result.rows.map(row => ({
+             ...row,
+             // follow_redirects: toBoolean(row.follow_redirects),
+             // active: toBoolean(row.active),
+             // is_up: toBoolean(row.is_up)
+         })) || [];
+    } catch (err) {
+        console.error(`Error getting websites for user (${userId}):`, err);
+        throw err;
+    }
 };
 
 
@@ -114,77 +137,111 @@ const getAllWebsitesByUser = (userId) => {
  * @param {number} id Website ID
  * @returns {Promise<object|null>}
  */
- const getWebsite = (id) => {
-     return new Promise((resolve, reject) => {
-         // Explicitly select columns and alias monitor_type
-         const sql = `
-             SELECT
-                 w.id, w.name, w.url, w.check_interval, w.timeout_ms, w.retry_count,
-                 w.accepted_status_codes, w.monitor_method, w.follow_redirects,
-                 w.max_redirects, w.user_id, w.active, w.monitor_type as monitorType, -- Alias
-                 w.monitor_config, -- Ensure this is selected
-                 w.created_at, w.updated_at,
-                 ws.last_check_time, ws.last_status_code, ws.last_response_time,
-                 ws.is_up, ws.last_error, ws.total_checks, ws.total_successful_checks
-             FROM monitored_websites w
-             LEFT JOIN website_status ws ON w.id = ws.website_id
-             WHERE w.id = ?
-         `;
-         getDatabase().get(sql, [id], (err, row) => {
-             if (err) reject(err);
-             else resolve(row || null);
-         });
-     });
+ const getWebsite = async (id) => {
+     const sql = `
+         SELECT
+             w.id, w.name, w.url, w.check_interval, w.timeout_ms, w.retry_count,
+             w.accepted_status_codes, w.monitor_method, w.follow_redirects,
+             w.max_redirects, w.user_id, w.active, w.monitor_type as "monitorType", -- Quoted alias
+             w.monitor_config,
+             w.created_at, w.updated_at,
+             ws.last_check_time, ws.last_status_code, ws.last_response_time,
+             ws.is_up, ws.last_error, ws.total_checks, ws.total_successful_checks
+         FROM monitored_websites w
+         LEFT JOIN website_status ws ON w.id = ws.website_id
+         WHERE w.id = $1
+     `;
+     try {
+         const result = await getDatabase().query(sql, [id]);
+         const row = result.rows[0];
+         if (row) {
+             // Map boolean fields if necessary
+             return {
+                 ...row,
+                 // follow_redirects: toBoolean(row.follow_redirects),
+                 // active: toBoolean(row.active),
+                 // is_up: toBoolean(row.is_up)
+             };
+         }
+         return null;
+     } catch (err) {
+         console.error(`Error getting website (${id}):`, err);
+         throw err;
+     }
  };
 
 /**
- * Creates a new website
+ * Creates a new website and its initial status record
  * @param {object} website Website configuration including user_id
  * @returns {Promise<object>} Created website with ID and status
  */
-const createWebsite = (website) => {
-    return new Promise((resolve, reject) => {
-        const sql = `
-            INSERT INTO monitored_websites (
-                name, url, check_interval, timeout_ms, retry_count,
-                accepted_status_codes, monitor_method, follow_redirects,
-                 max_redirects, user_id, active, monitor_type, monitor_config
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) -- Use placeholder for monitor_config
-          `;
-  
-          // Prepare params, ensuring monitor_config is at least '{}'
-          const params = [
-              website.name,
-              website.url,
-            website.check_interval || 300,
-            website.timeout_ms || 5000,
-            website.retry_count || 1,
-            website.accepted_status_codes || '200-299',
-            website.monitor_method || 'GET',
-            website.follow_redirects !== undefined ? (website.follow_redirects ? 1 : 0) : 1,
-            website.max_redirects || 5,
-            website.user_id,
-            1, // Default active to 1 (true)
-              website.monitor_type || 'http',
-              website.monitor_config || '{}' // Default to '{}' if null/undefined
-          ];
-  
-          // console.log('[DB Debug - createWebsite] PARAMS:', params); // Keep this commented/removed for now
-          getDatabase().run(sql, params, function(err) {
-              if (err) reject(err);
-              else {
-                  const newWebsiteId = this.lastID;
-                  // Initialize status after creating website
-                  const statusSql = 'INSERT INTO website_status (website_id) VALUES (?)';
-                  getDatabase().run(statusSql, [newWebsiteId], (statusErr) => {
-                      if (statusErr) reject(statusErr);
-                      // Fetch the newly created website with its initial status
-                      else getWebsite(newWebsiteId).then(resolve).catch(reject);
-                  });
-              }
-          });
-    });
+const createWebsite = async (website) => {
+    // Use RETURNING id to get the new website's ID
+    const insertWebsiteSql = `
+        INSERT INTO monitored_websites (
+            name, url, check_interval, timeout_ms, retry_count,
+            accepted_status_codes, monitor_method, follow_redirects,
+            max_redirects, user_id, active, monitor_type, monitor_config
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING id
+    `;
+
+    // Prepare params, ensuring monitor_config is JSON string or null
+    // Assuming boolean fields are handled correctly by pg driver
+    const params = [
+        website.name,
+        website.url,
+        website.check_interval || 300,
+        website.timeout_ms || 5000,
+        website.retry_count || 1,
+        website.accepted_status_codes || '200-299',
+        website.monitor_method || 'GET',
+        website.follow_redirects !== undefined ? website.follow_redirects : true,
+        website.max_redirects || 5,
+        website.user_id,
+        true, // Default active to true
+        website.monitor_type || 'http',
+        website.monitor_config ? JSON.stringify(website.monitor_config) : null // Store JSON as string or use JSONB type
+    ];
+
+    const client = await getDatabase().connect(); // Use a client for transaction-like behavior
+    try {
+        // Insert website
+        const websiteResult = await client.query(insertWebsiteSql, params);
+        const newWebsiteId = websiteResult.rows[0]?.id;
+
+        if (!newWebsiteId) {
+            throw new Error('Website creation failed, no ID returned.');
+        }
+
+        // Initialize status after creating website
+        const statusSql = 'INSERT INTO website_status (website_id) VALUES ($1)';
+        await client.query(statusSql, [newWebsiteId]);
+
+        // Fetch the newly created website with its initial status (using the same client)
+        const fetchSql = `
+            SELECT
+                w.id, w.name, w.url, w.check_interval, w.timeout_ms, w.retry_count,
+                w.accepted_status_codes, w.monitor_method, w.follow_redirects,
+                w.max_redirects, w.user_id, w.active, w.monitor_type as "monitorType",
+                w.monitor_config, w.created_at, w.updated_at,
+                ws.last_check_time, ws.last_status_code, ws.last_response_time,
+                ws.is_up, ws.last_error, ws.total_checks, ws.total_successful_checks
+            FROM monitored_websites w
+            LEFT JOIN website_status ws ON w.id = ws.website_id
+            WHERE w.id = $1
+        `;
+        const finalResult = await client.query(fetchSql, [newWebsiteId]);
+        return finalResult.rows[0] || null; // Should exist
+
+    } catch (err) {
+        console.error(`Error creating website (${website.name}):`, err);
+        throw err; // Re-throw for controller
+    } finally {
+        client.release(); // Release client back to pool
+    }
 };
+
 
 /**
  * Updates a website's configuration
@@ -192,64 +249,68 @@ const createWebsite = (website) => {
  * @param {object} website Updated configuration
  * @returns {Promise<object>} Updated website with status
  */
-const updateWebsite = (id, website) => {
-    return new Promise((resolve, reject) => {
-        // Add 'active' column to UPDATE
-        const sql = `
-            UPDATE monitored_websites SET
-                name = COALESCE(?, name),
-                url = COALESCE(?, url),
-                check_interval = COALESCE(?, check_interval),
-                timeout_ms = COALESCE(?, timeout_ms),
-                retry_count = COALESCE(?, retry_count),
-                accepted_status_codes = COALESCE(?, accepted_status_codes),
-                monitor_method = COALESCE(?, monitor_method),
-                follow_redirects = COALESCE(?, follow_redirects),
-                max_redirects = COALESCE(?, max_redirects),
-                 active = COALESCE(?, active),
-                 monitor_type = COALESCE(?, monitor_type),
-                 monitor_config = ?, -- Removed COALESCE
-                 updated_at = DATETIME('now')
-             WHERE id = ?
-        `;
+const updateWebsite = async (id, website) => {
+    // Build the SET clause dynamically to handle COALESCE-like behavior
+    const fields = [];
+    const params = [];
+    let paramIndex = 1;
 
-        const params = [
-            website.name,
-            website.url,
-            website.check_interval,
-            website.timeout_ms,
-            website.retry_count,
-            website.accepted_status_codes,
-            website.monitor_method,
-            website.follow_redirects !== undefined ? (website.follow_redirects ? 1 : 0) : undefined,
-            website.max_redirects,
-             website.active !== undefined ? (website.active ? 1 : 0) : undefined,
-             website.monitor_type,
-             website.monitor_config || '{}', // Default to '{}' if null/undefined
-             id
-         ];
+    // Add fields to update if they are provided in the 'website' object
+    if (website.name !== undefined) { fields.push(`name = $${paramIndex++}`); params.push(website.name); }
+    if (website.url !== undefined) { fields.push(`url = $${paramIndex++}`); params.push(website.url); }
+    if (website.check_interval !== undefined) { fields.push(`check_interval = $${paramIndex++}`); params.push(website.check_interval); }
+    if (website.timeout_ms !== undefined) { fields.push(`timeout_ms = $${paramIndex++}`); params.push(website.timeout_ms); }
+    if (website.retry_count !== undefined) { fields.push(`retry_count = $${paramIndex++}`); params.push(website.retry_count); }
+    if (website.accepted_status_codes !== undefined) { fields.push(`accepted_status_codes = $${paramIndex++}`); params.push(website.accepted_status_codes); }
+    if (website.monitor_method !== undefined) { fields.push(`monitor_method = $${paramIndex++}`); params.push(website.monitor_method); }
+    if (website.follow_redirects !== undefined) { fields.push(`follow_redirects = $${paramIndex++}`); params.push(website.follow_redirects); }
+    if (website.max_redirects !== undefined) { fields.push(`max_redirects = $${paramIndex++}`); params.push(website.max_redirects); }
+    if (website.active !== undefined) { fields.push(`active = $${paramIndex++}`); params.push(website.active); }
+    if (website.monitor_type !== undefined) { fields.push(`monitor_type = $${paramIndex++}`); params.push(website.monitor_type); }
+    if (website.monitor_config !== undefined) { // Update config directly
+        fields.push(`monitor_config = $${paramIndex++}`);
+        params.push(website.monitor_config ? JSON.stringify(website.monitor_config) : null);
+    }
 
-        getDatabase().run(sql, params, (err) => {
-            if (err) reject(err);
-            // Fetch the updated website with its status
-            else getWebsite(id).then(resolve).catch(reject); 
-        });
-    });
+    if (fields.length === 0) {
+        // Nothing to update, just fetch the current state
+        return getWebsite(id);
+    }
+
+    // Add updated_at and the WHERE clause parameter
+    fields.push(`updated_at = NOW()`);
+    params.push(id); // Add the website ID for the WHERE clause
+
+    const sql = `
+        UPDATE monitored_websites SET
+            ${fields.join(', ')}
+        WHERE id = $${paramIndex}
+    `;
+
+    try {
+        await getDatabase().query(sql, params);
+        // Fetch the updated website with its status
+        return getWebsite(id);
+    } catch (err) {
+        console.error(`Error updating website (${id}):`, err);
+        throw err;
+    }
 };
 
 /**
- * Deletes a website and all its checks/status
+ * Deletes a website and all its checks/status (assuming CASCADE DELETE is set up in migrations)
  * @param {number} id Website ID
  * @returns {Promise<void>}
  */
-const deleteWebsite = (id) => {
-    // Note: Cascading delete should handle history and status
-    return new Promise((resolve, reject) => {
-        getDatabase().run('DELETE FROM monitored_websites WHERE id = ?', [id], (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
+const deleteWebsite = async (id) => {
+    // Note: Assumes foreign keys have ON DELETE CASCADE
+    const sql = 'DELETE FROM monitored_websites WHERE id = $1';
+    try {
+        await getDatabase().query(sql, [id]);
+    } catch (err) {
+        console.error(`Error deleting website (${id}):`, err);
+        throw err;
+    }
 };
 
 /**
@@ -257,17 +318,19 @@ const deleteWebsite = (id) => {
  * @param {number} websiteId Website ID
  * @returns {Promise<object|null>}
  */
-const getLatestCheck = (websiteId) => {
-    return new Promise((resolve, reject) => {
-        getDatabase().get(
-            'SELECT * FROM monitoring_history WHERE website_id = ? ORDER BY checked_at DESC LIMIT 1',
-            [websiteId],
-            (err, row) => {
-                if (err) reject(err);
-                else resolve(row || null);
-            }
-        );
-    });
+const getLatestCheck = async (websiteId) => {
+    const sql = `
+        SELECT * FROM monitoring_history
+        WHERE website_id = $1
+        ORDER BY checked_at DESC LIMIT 1
+    `;
+    try {
+        const result = await getDatabase().query(sql, [websiteId]);
+        return result.rows[0] || null;
+    } catch (err) {
+        console.error(`Error getting latest check for website (${websiteId}):`, err);
+        throw err;
+    }
 };
 
 /**
@@ -275,31 +338,31 @@ const getLatestCheck = (websiteId) => {
  * @param {object} check Check result including websiteId
  * @returns {Promise<void>}
  */
-const insertCheckHistory = (check) => {
-    return new Promise((resolve, reject) => {
-        const sql = `
-            INSERT INTO monitoring_history (
-                website_id, status_code, response_time_ms, is_up,
-                error_type, error_message, redirect_count, final_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `;
+const insertCheckHistory = async (check) => {
+    const sql = `
+        INSERT INTO monitoring_history (
+            website_id, status_code, response_time_ms, is_up,
+            error_type, error_message, redirect_count, final_url
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `;
 
-        const params = [
-            check.websiteId, // Renamed from website_id for consistency
-            check.statusCode, // Renamed from status_code
-            check.responseTimeMs, // Renamed from response_time_ms
-            check.isUp ? 1 : 0, // Renamed from is_up
-            check.error_type || null,
-            check.error_message || null,
-            check.redirect_count || 0,
-            check.final_url || null
-        ];
+    const params = [
+        check.websiteId,
+        check.statusCode,
+        check.responseTimeMs,
+        check.isUp, // Assuming boolean
+        check.error_type || null,
+        check.error_message || null,
+        check.redirect_count || 0,
+        check.final_url || null
+    ];
 
-        getDatabase().run(sql, params, (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
+    try {
+        await getDatabase().query(sql, params);
+    } catch (err) {
+        console.error(`Error inserting check history for website (${check.websiteId}):`, err);
+        throw err;
+    }
 };
 
 /**
@@ -307,35 +370,34 @@ const insertCheckHistory = (check) => {
  * @param {object} status Status update data including websiteId
  * @returns {Promise<void>}
  */
-const updateWebsiteStatus = (status) => {
-    return new Promise((resolve, reject) => {
-        const sql = `
-            UPDATE website_status SET
-                last_check_time = DATETIME('now'),
-                last_status_code = ?,
-                last_response_time = ?,
-                is_up = ?,
-                last_error = ?,
-                total_checks = total_checks + 1,
-                total_successful_checks = total_successful_checks + ?
-                -- uptime_percentage calculation might be better done elsewhere or via trigger
-            WHERE website_id = ?
-        `;
+const updateWebsiteStatus = async (status) => {
+    const sql = `
+        UPDATE website_status SET
+            last_check_time = NOW(),
+            last_status_code = $1,
+            last_response_time = $2,
+            is_up = $3,
+            last_error = $4,
+            total_checks = total_checks + 1,
+            total_successful_checks = total_successful_checks + $5
+        WHERE website_id = $6
+    `;
 
-        const params = [
-            status.statusCode, // Renamed from status_code
-            status.responseTimeMs, // Renamed from response_time_ms
-            status.isUp ? 1 : 0, // Renamed from is_up
-            status.error_message || null,
-            status.isUp ? 1 : 0,
-            status.websiteId // Renamed from website_id
-        ];
+    const params = [
+        status.statusCode,
+        status.responseTimeMs,
+        status.isUp, // Assuming boolean
+        status.error_message || null,
+        status.isUp ? 1 : 0, // Increment successful checks only if up
+        status.websiteId
+    ];
 
-        getDatabase().run(sql, params, (err) => {
-            if (err) reject(err);
-            else resolve();
-        });
-    });
+    try {
+        await getDatabase().query(sql, params);
+    } catch (err) {
+        console.error(`Error updating website status for website (${status.websiteId}):`, err);
+        throw err;
+    }
 };
 
 /**
@@ -344,22 +406,23 @@ const updateWebsiteStatus = (status) => {
  * @param {object} options Query options (limit, offset)
  * @returns {Promise<Array<object>>} History records
  */
-const getWebsiteHistory = (websiteId, options = {}) => {
-     return new Promise((resolve, reject) => {
-         const sql = `
-             SELECT *
-             FROM monitoring_history
-             WHERE website_id = ?
-             ORDER BY checked_at DESC
-             LIMIT ? OFFSET ?
-         `;
-         const limit = options.limit || 100;
-         const offset = options.offset || 0;
-         getDatabase().all(sql, [websiteId, limit, offset], (err, rows) => {
-             if (err) reject(err);
-             else resolve(rows || []);
-         });
-     });
+const getWebsiteHistory = async (websiteId, options = {}) => {
+     const sql = `
+         SELECT *
+         FROM monitoring_history
+         WHERE website_id = $1
+         ORDER BY checked_at DESC
+         LIMIT $2 OFFSET $3
+     `;
+     const limit = options.limit || 100;
+     const offset = options.offset || 0;
+     try {
+         const result = await getDatabase().query(sql, [websiteId, limit, offset]);
+         return result.rows || [];
+     } catch (err) {
+         console.error(`Error getting website history for website (${websiteId}):`, err);
+         throw err;
+     }
  };
 
 module.exports = {
@@ -367,7 +430,7 @@ module.exports = {
     findUserById,
     createUser,
     getAllWebsites,
-    getAllWebsitesByUser, // Export new function
+    getAllWebsitesByUser,
     getWebsite,
     createWebsite,
     updateWebsite,
@@ -375,5 +438,5 @@ module.exports = {
     getLatestCheck,
     insertCheckHistory,
     updateWebsiteStatus,
-    getWebsiteHistory // Export new function
+    getWebsiteHistory
 };

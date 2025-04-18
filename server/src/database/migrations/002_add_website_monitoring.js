@@ -1,12 +1,10 @@
 /**
- * Migration to add website monitoring tables
+ * Migration to add website monitoring tables for PostgreSQL
  */
 const UP_MIGRATION = `
-BEGIN TRANSACTION;
-
 -- Website Monitoring Table
 CREATE TABLE IF NOT EXISTS monitored_websites (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     url TEXT NOT NULL,
     check_interval INTEGER DEFAULT 300,
@@ -14,11 +12,11 @@ CREATE TABLE IF NOT EXISTS monitored_websites (
     retry_count INTEGER DEFAULT 1,
     accepted_status_codes TEXT DEFAULT '200-299',
     monitor_method TEXT DEFAULT 'GET',
-    follow_redirects BOOLEAN DEFAULT 1,
+    follow_redirects BOOLEAN DEFAULT TRUE, -- Use native BOOLEAN
     max_redirects INTEGER DEFAULT 5,
     user_id INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -27,16 +25,16 @@ CREATE INDEX IF NOT EXISTS idx_website_user ON monitored_websites(user_id);
 
 -- Monitoring History Table
 CREATE TABLE IF NOT EXISTS monitoring_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     website_id INTEGER NOT NULL,
     status_code INTEGER,
     response_time_ms INTEGER,
-    is_up BOOLEAN,
+    is_up BOOLEAN, -- Use native BOOLEAN
     error_type TEXT,
     error_message TEXT,
     redirect_count INTEGER DEFAULT 0,
     final_url TEXT,
-    checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    checked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (website_id) REFERENCES monitored_websites(id) ON DELETE CASCADE
 );
 
@@ -48,63 +46,53 @@ CREATE INDEX IF NOT EXISTS idx_history_website_time ON monitoring_history(websit
 -- Website Status Table (current status)
 CREATE TABLE IF NOT EXISTS website_status (
     website_id INTEGER PRIMARY KEY,
-    last_check_time DATETIME,
+    last_check_time TIMESTAMP WITH TIME ZONE,
     last_status_code INTEGER,
     last_response_time INTEGER,
-    is_up BOOLEAN,
-    uptime_percentage REAL,
+    is_up BOOLEAN, -- Use native BOOLEAN
+    uptime_percentage REAL, -- REAL is generally fine, consider NUMERIC or DOUBLE PRECISION if needed
     last_error TEXT,
     total_checks INTEGER DEFAULT 0,
     total_successful_checks INTEGER DEFAULT 0,
     FOREIGN KEY (website_id) REFERENCES monitored_websites(id) ON DELETE CASCADE
 );
-
-COMMIT;
 `;
 
 const DOWN_MIGRATION = `
-BEGIN TRANSACTION;
-
--- Drop tables and indices
+-- Drop tables and indices (Order matters due to foreign keys)
 DROP TABLE IF EXISTS monitoring_history;
 DROP TABLE IF EXISTS website_status;
-DROP TABLE IF EXISTS monitored_websites;
-
-COMMIT;
+DROP TABLE IF EXISTS monitored_websites; -- Drop this last
+-- Indices are typically dropped automatically when the table is dropped
 `;
 
 /**
- * @param {import('sqlite3').Database} db
+ * Applies the migration
+ * @param {import('pg').PoolClient | import('pg').Pool} db - The pg Pool instance or a PoolClient for transactions
  * @returns {Promise<void>}
  */
 exports.up = async (db) => {
-    return new Promise((resolve, reject) => {
-        db.exec(UP_MIGRATION, (err) => {
-            if (err) {
-                console.error('Migration 002 (up) failed:', err);
-                reject(err);
-            } else {
-                resolve();
-            }
-        });
-    });
+    try {
+        // Execute the multi-statement SQL. db.query handles this.
+        await db.query(UP_MIGRATION);
+    } catch (err) {
+        console.error('Migration 002 (up) failed:', err);
+        throw err;
+    }
 };
 
 /**
- * @param {import('sqlite3').Database} db
+ * Reverts the migration
+ * @param {import('pg').PoolClient | import('pg').Pool} db - The pg Pool instance or a PoolClient for transactions
  * @returns {Promise<void>}
  */
 exports.down = async (db) => {
-    return new Promise((resolve, reject) => {
-        db.exec(DOWN_MIGRATION, (err) => {
-            if (err) {
-                console.error('Migration 002 (down) failed:', err);
-                reject(err);
-            } else {
-                resolve();
-            }
-        });
-    });
+    try {
+        await db.query(DOWN_MIGRATION);
+    } catch (err) {
+        console.error('Migration 002 (down) failed:', err);
+        throw err;
+    }
 };
 
 exports.MIGRATION_VERSION = '002';

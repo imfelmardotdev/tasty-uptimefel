@@ -1,41 +1,54 @@
-const MIGRATION_VERSION = '008';
+/**
+ * Migration to add monitor_type and monitor_config columns for PostgreSQL
+ */
+const UP_MIGRATION = `
+ALTER TABLE monitored_websites
+ADD COLUMN monitor_type TEXT DEFAULT 'http',
+ADD COLUMN monitor_config JSONB; -- Use JSONB for config
+`;
+
+const DOWN_MIGRATION = `
+ALTER TABLE monitored_websites
+DROP COLUMN IF EXISTS monitor_type,
+DROP COLUMN IF EXISTS monitor_config;
+`;
 
 /**
- * Adds monitor type and configuration columns to monitored_websites table
+ * Applies the migration
+ * @param {import('pg').PoolClient | import('pg').Pool} db - The pg Pool instance or a PoolClient for transactions
+ * @returns {Promise<void>}
  */
-function up(db) {
-    return new Promise((resolve, reject) => {
-        // SQLite requires separate ALTER TABLE statements for each column
-        db.serialize(() => {
-            db.run(`ALTER TABLE monitored_websites ADD COLUMN monitor_type TEXT DEFAULT 'http'`, (err) => {
-                if (err && !err.message.includes('duplicate column')) {
-                    reject(err);
-                    return;
-                }
-                
-                db.run(`ALTER TABLE monitored_websites ADD COLUMN monitor_config TEXT`, (err) => {
-                    if (err && !err.message.includes('duplicate column')) {
-                        reject(err);
-                    } else {
-                        resolve();
-                    }
-                });
-            });
-        });
-    });
-}
-
-/**
- * Removes monitor type and configuration columns
- */
-function down(db) {
-    // SQLite doesn't support dropping columns
-    // We'd need to recreate the table to remove columns
-    return Promise.resolve();
-}
-
-module.exports = {
-    MIGRATION_VERSION,
-    up,
-    down
+exports.up = async (db) => {
+    try {
+        // PostgreSQL can add multiple columns in one ALTER TABLE statement
+        await db.query(UP_MIGRATION);
+        console.log("Columns 'monitor_type' and 'monitor_config' added to monitored_websites.");
+    } catch (err) {
+        // Handle potential error if columns already exist (e.g., migration run partially before)
+        // PostgreSQL error code for duplicate column is '42701'
+        if (err.code === '42701') {
+             console.warn("Migration 008 (up): Columns likely already exist.", err.message);
+             // Potentially query information_schema to be absolutely sure, but often warning is enough.
+        } else {
+            console.error("Migration 008 (up) failed:", err);
+            throw err;
+        }
+    }
 };
+
+/**
+ * Reverts the migration
+ * @param {import('pg').PoolClient | import('pg').Pool} db - The pg Pool instance or a PoolClient for transactions
+ * @returns {Promise<void>}
+ */
+exports.down = async (db) => {
+    try {
+        await db.query(DOWN_MIGRATION);
+        console.log("Columns 'monitor_type' and 'monitor_config' dropped from monitored_websites.");
+    } catch (err) {
+        console.error("Migration 008 (down) failed:", err);
+        throw err;
+    }
+};
+
+exports.MIGRATION_VERSION = '008';

@@ -7,7 +7,8 @@ const { authRouter } = require('./auth/auth'); // Import authRouter
 const websiteRoutes = require('./routers/websiteRoutes');
 const publicStatusRoutes = require('./routers/publicStatusRoutes'); // Import public routes
 const statsRoutes = require('./routers/statsRoutes'); // Import stats routes
-const { startMonitoring } = require('./scheduler');
+// Removed: const { startMonitoring } = require('./scheduler'); - No longer starting interval here
+const { checkWebsites } = require('./scheduler'); // Import the check function
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -26,6 +27,32 @@ app.use('/api/auth', authRouter); // Use authRouter for /api/auth prefix
 app.use('/api/public', publicStatusRoutes); // Add public routes
 app.use('/api/stats', statsRoutes); // Add stats routes (already includes auth middleware)
 app.use('/api', websiteRoutes); // Keep authenticated website routes (assuming these also need auth)
+
+// Cron Job Endpoint (protected by secret)
+app.post('/api/cron/run-checks', async (req, res) => {
+    const cronSecret = process.env.CRON_SECRET;
+    const authHeader = req.headers.authorization;
+
+    if (!cronSecret) {
+        console.error('CRON_SECRET environment variable not set.');
+        return res.status(500).json({ error: 'Cron secret not configured' });
+    }
+
+    if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
+        console.warn('Unauthorized attempt to access cron endpoint.');
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        // Run the checks asynchronously, don't wait for completion
+        checkWebsites(); 
+        res.status(202).json({ message: 'Website check cycle initiated.' });
+    } catch (error) {
+        console.error('Error initiating cron check cycle:', error);
+        res.status(500).json({ error: 'Failed to initiate check cycle' });
+    }
+});
+
 
 // Handle React routing in production
 if (process.env.NODE_ENV === 'production') {
@@ -51,8 +78,7 @@ async function start() {
         await initializeDatabase();
         console.log('Database initialized');
 
-        // Start monitoring scheduler
-        startMonitoring();
+        // Removed: startMonitoring(); - Cron job will trigger checks via API
 
         // Start server
         const server = app.listen(port, () => {

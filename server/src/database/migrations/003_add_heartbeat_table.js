@@ -1,50 +1,61 @@
-module.exports = {
-  MIGRATION_VERSION: "003",
+/**
+ * Migration to add heartbeats table for PostgreSQL
+ */
+const UP_MIGRATION = `
+-- Create heartbeats table
+CREATE TABLE IF NOT EXISTS heartbeats (
+    id SERIAL PRIMARY KEY,
+    website_id INTEGER NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status INTEGER NOT NULL, -- 0: DOWN, 1: UP, 2: PENDING, 3: MAINTENANCE
+    ping INTEGER, -- Response time in ms
+    message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (website_id) REFERENCES monitored_websites(id) ON DELETE CASCADE -- Removed ON UPDATE CASCADE for broader compatibility
+);
 
-  up: async (db) => {
-    return new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run(
-          `CREATE TABLE heartbeats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            website_id INTEGER NOT NULL,
-            timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            status INTEGER NOT NULL, -- 0: DOWN, 1: UP, 2: PENDING, 3: MAINTENANCE
-            ping INTEGER, -- Response time in ms
-            message TEXT,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (website_id) REFERENCES monitored_websites(id) ON UPDATE CASCADE ON DELETE CASCADE -- Corrected table name
-          )`,
-          (err) => {
-            if (err) return reject(err);
-          }
-        );
+-- Create indices
+CREATE INDEX IF NOT EXISTS idx_heartbeats_website_id_timestamp ON heartbeats (website_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_heartbeats_timestamp ON heartbeats (timestamp);
+`;
 
-        db.run(
-          `CREATE INDEX idx_heartbeats_website_id_timestamp ON heartbeats (website_id, timestamp)`,
-          (err) => {
-            if (err) return reject(err);
-          }
-        );
+const DOWN_MIGRATION = `
+-- Drop heartbeats table
+DROP TABLE IF EXISTS heartbeats;
+`;
 
-        db.run(
-          `CREATE INDEX idx_heartbeats_timestamp ON heartbeats (timestamp)`,
-          (err) => {
-            if (err) return reject(err);
-            resolve(); // Resolve after the last command completes
-          }
-        );
-      });
-    });
-  },
-
-  down: async (db) => {
-    return new Promise((resolve, reject) => {
-      db.run(`DROP TABLE heartbeats`, (err) => {
-        if (err) return reject(err);
-        resolve();
-      });
-    });
-  },
+/**
+ * Applies the migration
+ * @param {import('pg').PoolClient | import('pg').Pool} db - The pg Pool instance or a PoolClient for transactions
+ * @returns {Promise<void>}
+ */
+exports.up = async (db) => {
+    try {
+        // pg driver can handle multiple statements separated by semicolons in one query call,
+        // or we can execute them separately. Separate calls are often clearer.
+        const statements = UP_MIGRATION.split(';').map(s => s.trim()).filter(s => s.length > 0);
+        for (const statement of statements) {
+            await db.query(statement);
+        }
+    } catch (err) {
+        console.error('Migration 003 (up) failed:', err);
+        throw err;
+    }
 };
+
+/**
+ * Reverts the migration
+ * @param {import('pg').PoolClient | import('pg').Pool} db - The pg Pool instance or a PoolClient for transactions
+ * @returns {Promise<void>}
+ */
+exports.down = async (db) => {
+    try {
+        await db.query(DOWN_MIGRATION);
+    } catch (err) {
+        console.error('Migration 003 (down) failed:', err);
+        throw err;
+    }
+};
+
+exports.MIGRATION_VERSION = "003";
