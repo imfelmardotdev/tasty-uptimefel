@@ -34,7 +34,9 @@ const checkWebsites = async () => {
 
                 // Check if active AND check_interval has passed since last check
                 // Assuming 'active' column is boolean in PG
+                console.log(`[SCHEDULER] Evaluating website ${website.id}: Active=${website.active}, Time Since Last Check=${timeSinceLastCheck}ms, Interval=${intervalMs}ms`); // Added condition log
                 if (website.active === true && timeSinceLastCheck >= intervalMs) {
+                      console.log(`[SCHEDULER] Condition MET for website ${website.id}. Proceeding with check.`); // Added log
                       console.log(`Checking website: ${website.name} (${website.url}) - Interval: ${intervalMs}ms, Last Check: ${lastCheckTime.toISOString()}`);
                       checkedCount++;
 
