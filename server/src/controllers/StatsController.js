@@ -239,10 +239,17 @@ const StatsController = {
 
         try {
             const db = getDatabase();
+            // Corrected SQL query: Join monitored_websites with website_status
             const sql = `
-                SELECT is_up, active
-                FROM websites
-                WHERE user_id = ?
+                SELECT
+                    mw.active,
+                    ws.is_up
+                FROM
+                    monitored_websites mw
+                LEFT JOIN
+                    website_status ws ON mw.id = ws.website_id
+                WHERE
+                    mw.user_id = ?
             `;
 
             db.all(sql, [userId], (err, rows) => {
@@ -258,12 +265,15 @@ const StatsController = {
                 let downCount = 0;
                 let pausedCount = 0;
 
+                // Logic remains the same, but uses data from the corrected query
                 (rows || []).forEach(website => {
-                    if (website.active === 0 || website.active === false) { // Check if paused (inactive)
+                    // Use mw.active (aliased as active in the result row)
+                    if (website.active === 0 || website.active === false) {
                         pausedCount++;
-                    } else if (website.is_up === 1 || website.is_up === true) { // Check if active and up
+                    // Use ws.is_up (aliased as is_up in the result row)
+                    } else if (website.is_up === 1 || website.is_up === true) {
                         upCount++;
-                    } else { // Must be active and down (or unknown, count as down for simplicity)
+                    } else { // Active but not up (down or status unknown)
                         downCount++;
                     }
                 });

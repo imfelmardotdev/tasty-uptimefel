@@ -12,6 +12,7 @@ import WebsiteList from './WebsiteList';
 import monitoringService, { Website as WebsiteData, Heartbeat } from '@/services/monitoringService';
 import CurrentStatusPanel from './CurrentStatusPanel'; // Import Status Panel
 import RecentStatsPanel from './RecentStatsPanel';   // Import Status Panel
+import { useMemo } from 'react'; // Import useMemo
 
 // Use interface from service, add heartbeats field
 interface Website extends WebsiteData {
@@ -23,6 +24,8 @@ const MonitoringDashboard = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState(''); // State for search input
+    const [sortOption, setSortOption] = useState('down-first'); // State for sort dropdown
     // const { token } = useAuth(); // Removed
     const navigate = useNavigate();
 
@@ -121,6 +124,53 @@ const MonitoringDashboard = () => {
         }
     };
 
+    // Filter and sort websites based on searchTerm and sortOption
+    const filteredAndSortedWebsites = useMemo(() => {
+        let filtered = websites.filter(website =>
+            website.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            website.url.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        // Create a copy before sorting to ensure React detects the change
+        const sorted = [...filtered];
+
+        switch (sortOption) {
+            case 'down-first':
+                sorted.sort((a, b) => {
+                    // Use loose equality (==) to handle boolean or integer (0/1) values
+                    const statusA = a.is_up == false ? 0 : (a.is_up == true ? 1 : 2); // down=0, up=1, unknown=2
+                    const statusB = b.is_up == false ? 0 : (b.is_up == true ? 1 : 2);
+                    return statusA - statusB;
+                });
+                break;
+            case 'up-first':
+                 sorted.sort((a, b) => {
+                    // Use loose equality (==)
+                    const statusA = a.is_up == true ? 0 : (a.is_up == false ? 1 : 2); // up=0, down=1, unknown=2
+                    const statusB = b.is_up == true ? 0 : (b.is_up == false ? 1 : 2);
+                    return statusA - statusB;
+                });
+                break;
+            case 'name-asc':
+                sorted.sort((a, b) => a.name.localeCompare(b.name));
+                break;
+            case 'name-desc':
+                sorted.sort((a, b) => b.name.localeCompare(a.name));
+                break;
+            default:
+                // Default to down-first if sortOption is unexpected
+                 sorted.sort((a, b) => {
+                    // Use loose equality (==)
+                    const statusA = a.is_up == false ? 0 : (a.is_up == true ? 1 : 2);
+                    const statusB = b.is_up == false ? 0 : (b.is_up == true ? 1 : 2);
+                    return statusA - statusB;
+                });
+        }
+
+        return sorted; // Return the sorted copy
+    }, [websites, searchTerm, sortOption]);
+
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -142,32 +192,9 @@ const MonitoringDashboard = () => {
             <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-2 mb-6 bg-white p-3 rounded-lg shadow-sm border border-gray-200">
                 {/* Left side controls - Allow wrapping */}
                 <div className="flex flex-wrap items-center gap-y-2 gap-x-3">
-                    <Checkbox id="bulk-select-all" /> {/* Placeholder */}
-                    {/* Bulk Actions Dropdown */}
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="flex items-center">
-                                Bulk actions <ChevronDown className="ml-1 h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                            <DropdownMenuItem>Pause</DropdownMenuItem>
-                            <DropdownMenuItem>Start</DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                    {/* Tags Dropdown */}
-                     <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="flex items-center">
-                                All tags <ChevronDown className="ml-1 h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                            <DropdownMenuItem>Tag 1</DropdownMenuItem> {/* Placeholder */}
-                            <DropdownMenuItem>Tag 2</DropdownMenuItem> {/* Placeholder */}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                    {/* Checkbox - REMOVED */}
+                    {/* Bulk Actions Dropdown - REMOVED */}
+                    {/* Tags Dropdown - REMOVED */}
                 </div>
                  {/* Right side controls - Allow wrapping, ensure search takes available space */}
                 <div className="flex flex-wrap items-center gap-y-2 gap-x-2 flex-grow justify-end md:flex-nowrap">
@@ -175,9 +202,11 @@ const MonitoringDashboard = () => {
                         type="search"
                         placeholder="Search by name or url"
                         className="h-9 w-full sm:w-auto sm:max-w-xs flex-grow" // Allow input to grow
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                     />
                     {/* Sort Dropdown */}
-                    <Select defaultValue="down-first">
+                    <Select value={sortOption} onValueChange={setSortOption} defaultValue="down-first">
                          {/* Consider hiding text on small screens if needed */}
                         <SelectTrigger className="w-auto sm:w-[150px] h-9 text-sm flex-shrink-0">
                             <ArrowUpDown className="mr-1 h-3 w-3" />
@@ -191,12 +220,7 @@ const MonitoringDashboard = () => {
                             <SelectItem value="name-desc">Name (Z-A)</SelectItem>
                         </SelectContent>
                     </Select>
-                    {/* Filter Button */}
-                    <Button variant="outline" size="sm" className="h-9 flex-shrink-0">
-                        <SlidersHorizontal className="mr-1 h-4 w-4" />
-                         <span className="hidden sm:inline">Filter</span>
-                         <span className="sm:hidden">Filters</span>
-                    </Button>
+                    {/* Filter Button - REMOVED */}
                     {/* Add New Monitor Button */}
                     <Button
                         onClick={() => setIsAddDialogOpen(true)}
@@ -220,7 +244,7 @@ const MonitoringDashboard = () => {
                     )}
                     {/* WebsiteList content itself might need further responsive adjustments */}
                     <WebsiteList
-                        websites={websites}
+                        websites={filteredAndSortedWebsites} // Pass the filtered and sorted list
                         onDelete={handleDeleteWebsite}
                         onCheck={handleCheckWebsite}
                     />

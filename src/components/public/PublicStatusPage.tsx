@@ -146,7 +146,12 @@ const PublicStatusPage = () => {
                                 // Render statuses even if there's an error, showing last known state
                                 statuses.map((monitor, index) => (
                                 <div key={monitor.id} className={`flex flex-wrap items-center p-4 gap-x-4 gap-y-2 ${index < statuses.length - 1 ? 'border-b border-gray-200' : ''}`}>
-                                    <div className="flex-1 font-medium text-gray-800 min-w-[150px] truncate">{monitor.name}</div>
+                                    {/* Container for name and URL */}
+                                    <div className="flex-1 min-w-[150px]">
+                                        <div className="font-medium text-gray-800 truncate">{monitor.name}</div>
+                                        {/* Added URL display */}
+                                        <div className="text-xs text-gray-500 truncate">{monitor.url}</div>
+                                    </div>
                                     {/* Display uptime % (using placeholder value for now) */}
                                     <div className="text-sm text-green-600 w-16 text-right">
                                         {typeof monitor.uptime_percent_90d === 'number'
