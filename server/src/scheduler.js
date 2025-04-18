@@ -32,30 +32,47 @@ const checkWebsites = async () => {
                       checkedCount++;
 
                       // Perform the check
+                      console.log(`[SCHEDULER] Performing check for ${website.name} (ID: ${website.id})...`);
                       const result = await performCheck(website); // performCheck needs to handle PG website object structure
+                      console.log(`[SCHEDULER] Check performed for ${website.name}. Result: ${result.isUp ? 'UP' : 'DOWN'}, Response Time: ${result.responseTime}ms`);
 
                       // Update status and history using db functions
                       // Ensure result object structure matches what db functions expect
-                      await updateWebsiteStatus({ ...result, websiteId: website.id });
-                      await insertCheckHistory({ ...result, websiteId: website.id });
-                      console.log(`Check complete for ${website.name}. Status: ${result.isUp ? 'UP' : 'DOWN'}`);
+                      console.log(`[SCHEDULER] Attempting DB update for ${website.name} (ID: ${website.id})...`);
+                      try {
+                          await updateWebsiteStatus({ ...result, websiteId: website.id });
+                          console.log(`[SCHEDULER] DB updateWebsiteStatus successful for ${website.name}`);
+                          await insertCheckHistory({ ...result, websiteId: website.id });
+                          console.log(`[SCHEDULER] DB insertCheckHistory successful for ${website.name}`);
+                      } catch (dbError) {
+                          console.error(`[SCHEDULER] DATABASE ERROR updating status/history for ${website.name} (ID: ${website.id}):`, dbError);
+                          // Rethrow or handle as needed - rethrowing might be caught by the outer loop's catch
+                          throw dbError; 
+                      }
+                      console.log(`[SCHEDULER] Check and DB update complete for ${website.name}. Status: ${result.isUp ? 'UP' : 'DOWN'}`);
                 } else if (website.active !== true) {
-                    // console.log(`Skipping inactive website: ${website.name}`);
+                    // console.log(`[SCHEDULER] Skipping inactive website: ${website.name}`); // Uncomment if needed
                 } else {
                     // console.log(`Skipping website (interval not met): ${website.name}`);
                 }
-            } catch (error) {
+            } catch (loopError) { // Renamed variable for clarity
                 errorCount++;
-                console.error(`Error checking individual website ${website.name} (ID: ${website.id}):`, error);
+                // Log the specific error encountered during the check or DB update for this website
+                console.error(`[SCHEDULER] LOOP ERROR for website ${website.name} (ID: ${website.id}):`, loopError);
                 // Optionally update status to indicate check failure?
-                // await updateWebsiteStatus({ websiteId: website.id, isUp: false, error_message: 'Scheduler check failed: ' + error.message });
+                // Consider adding a try-catch here if you implement this fallback update
+                // try {
+                //   await updateWebsiteStatus({ websiteId: website.id, isUp: false, error_message: 'Scheduler check failed: ' + loopError.message, responseTime: null, statusCode: null });
+                // } catch (fallbackError) {
+                //   console.error(`[SCHEDULER] Fallback DB update failed for ${website.name}:`, fallbackError);
+                // }
             }
         }
-    } catch (error) {
+    } catch (fetchError) { // Renamed variable for clarity
         errorCount++;
-        console.error('Error fetching websites for monitoring loop:', error);
+        console.error('[SCHEDULER] FATAL ERROR fetching websites for monitoring loop:', fetchError);
     } finally {
-        console.log(`Cron job: Finished website check cycle. Checked: ${checkedCount}, Errors: ${errorCount}`);
+        console.log(`[SCHEDULER] Finished website check cycle. Checked: ${checkedCount}, Errors: ${errorCount}`);
     }
 };
 

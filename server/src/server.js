@@ -49,12 +49,18 @@ app.post('/api/cron/run-checks', async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    console.log('[CRON HANDLER] Authorized request received.'); // Added log
+
     try {
+        console.log('[CRON HANDLER] Initiating checkWebsites()...'); // Added log
         // Run the checks asynchronously, don't wait for completion
         checkWebsites(); 
+        console.log('[CRON HANDLER] checkWebsites() initiated successfully (async).'); // Added log
         res.status(202).json({ message: 'Website check cycle initiated.' });
     } catch (error) {
-        console.error('Error initiating cron check cycle:', error);
+        // This catch block might only catch errors during the *initiation* 
+        // of checkWebsites, not errors *within* its async execution.
+        console.error('[CRON HANDLER] CRITICAL ERROR initiating checkWebsites():', error); // Enhanced log
         res.status(500).json({ error: 'Failed to initiate check cycle' });
     }
 });
