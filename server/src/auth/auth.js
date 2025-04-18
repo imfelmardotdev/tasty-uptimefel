@@ -1,5 +1,5 @@
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs'); // Changed from 'bcrypt'
 const jwt = require('jsonwebtoken');
 // Import the specific functions needed from db.js
 const { findUserByEmail, createUser, findUserById } = require('../database/db');

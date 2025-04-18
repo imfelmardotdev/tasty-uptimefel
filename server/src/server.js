@@ -14,7 +14,20 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
+// Add this logging middleware FIRST to see all incoming requests
+app.use((req, res, next) => {
+  console.log(`[Request Logger] Received: ${req.method} ${req.originalUrl}`);
+  // Optional: Log headers if needed for deep debugging
+  // console.log('[Request Logger] Headers:', JSON.stringify(req.headers, null, 2)); 
+  next();
+});
+
+// Explicitly allow requests from the Vite dev server origin
+const corsOptions = {
+  origin: 'http://localhost:5173', // Allow your frontend origin
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+};
+app.use(cors(corsOptions)); 
 app.use(express.json());
 
 // Serve static files from the React app in production
@@ -22,11 +35,11 @@ if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, '../../dist')));
 }
 
-// API Routes - Define most general '/api' first, then more specific sub-routes
-app.use('/api', websiteRoutes); // Handles /api/websites, /api/websites/:id, etc.
+// API Routes - Reverted to original order
 app.use('/api/auth', authRouter); 
 app.use('/api/public', publicStatusRoutes);
 app.use('/api/stats', statsRoutes); 
+app.use('/api', websiteRoutes); // Handles /api/websites, /api/websites/:id, etc.
 
 // Cron Job Endpoint (protected by secret)
 // This needs to be defined separately as it's a POST on a specific path

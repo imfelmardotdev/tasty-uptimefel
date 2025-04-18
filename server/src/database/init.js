@@ -37,10 +37,10 @@ async function initializeDatabase() {
     try {
         db = new Pool({
             connectionString: connectionString,
-            // Add SSL configuration if required by Supabase/provider (often needed)
-            // ssl: {
-            //   rejectUnauthorized: false // Use with caution, better to configure properly
-            // }
+            // Add SSL configuration required by Supabase/most cloud providers
+            ssl: {
+              rejectUnauthorized: false // Set to false if using self-signed certs or having issues, but ideally configure CA certs
+            }
         });
 
         // Test the connection
