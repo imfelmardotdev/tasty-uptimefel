@@ -53,15 +53,15 @@ app.post('/api/cron/run-checks', async (req, res) => {
 
     try {
         console.log('[CRON HANDLER] Initiating checkWebsites()...'); // Added log
-        // Run the checks asynchronously, don't wait for completion
-        checkWebsites(); 
-        console.log('[CRON HANDLER] checkWebsites() initiated successfully (async).'); // Added log
-        res.status(202).json({ message: 'Website check cycle initiated.' });
+        // Await the completion of the checks to ensure logs are captured
+        await checkWebsites(); 
+        console.log('[CRON HANDLER] checkWebsites() completed.'); // Updated log
+        // Send 200 OK now that the work is done (or attempted)
+        res.status(200).json({ message: 'Website check cycle completed.' }); 
     } catch (error) {
-        // This catch block might only catch errors during the *initiation* 
-        // of checkWebsites, not errors *within* its async execution.
-        console.error('[CRON HANDLER] CRITICAL ERROR initiating checkWebsites():', error); // Enhanced log
-        res.status(500).json({ error: 'Failed to initiate check cycle' });
+        // This catch block should now catch errors from within checkWebsites if they bubble up
+        console.error('[CRON HANDLER] CRITICAL ERROR during checkWebsites() execution:', error); // Enhanced log
+        res.status(500).json({ error: 'Failed to complete check cycle' });
     }
 });
 
