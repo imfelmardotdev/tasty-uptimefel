@@ -48,34 +48,40 @@ app.use('/api/websites', websiteRoutes); // Mount website routes under /api/webs
 
 // Cron Job Endpoint (protected by secret)
 // This needs to be defined separately as it's a POST on a specific path
+// NOTE: Temporarily simplified for debugging Vercel logs
 app.post('/api/cron/run-checks', async (req, res) => {
-    const cronSecret = process.env.CRON_SECRET;
-    const authHeader = req.headers.authorization;
+    // const cronSecret = process.env.CRON_SECRET;
+    // const authHeader = req.headers.authorization;
 
-    if (!cronSecret) {
-        console.error('CRON_SECRET environment variable not set.');
-        return res.status(500).json({ error: 'Cron secret not configured' });
-    }
+    // if (!cronSecret) {
+    //     console.error('CRON_SECRET environment variable not set.');
+    //     return res.status(500).json({ error: 'Cron secret not configured' });
+    // }
 
-    if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-        console.warn('Unauthorized attempt to access cron endpoint.');
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+    // if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
+    //     console.warn('Unauthorized attempt to access cron endpoint.');
+    //     return res.status(401).json({ error: 'Unauthorized' });
+    // }
 
-    console.log('[CRON HANDLER] Authorized request received.'); // Added log
+    // console.log('[CRON HANDLER] Authorized request received.'); // Added log
 
-    try {
-        console.log('[CRON HANDLER] About to call await checkWebsites()...'); // Added log before call
-        // Await the completion of the checks to ensure logs are captured
-        await checkWebsites();
-        console.log('[CRON HANDLER] checkWebsites() completed.'); // Updated log
-        // Send 200 OK now that the work is done (or attempted)
-        res.status(200).json({ message: 'Website check cycle completed.' }); 
-    } catch (error) {
-        // This catch block should now catch errors from within checkWebsites if they bubble up
-        console.error('[CRON HANDLER] CRITICAL ERROR during checkWebsites() execution:', error); // Enhanced log
-        res.status(500).json({ error: 'Failed to complete check cycle' });
-    }
+    // try {
+    //     console.log('[CRON HANDLER] About to call await checkWebsites()...'); // Added log before call
+    //     // Await the completion of the checks to ensure logs are captured
+    //     // await checkWebsites(); // Temporarily commented out
+    //     console.log('[CRON HANDLER] checkWebsites() call skipped for debugging.'); // Updated log
+    //     // Send 200 OK now that the work is done (or attempted)
+    //     res.status(200).json({ message: 'Website check cycle completed (debug mode).' }); 
+    // } catch (error) {
+    //     // This catch block should now catch errors from within checkWebsites if they bubble up
+    //     console.error('[CRON HANDLER] CRITICAL ERROR during checkWebsites() execution:', error); // Enhanced log
+    //     res.status(500).json({ error: 'Failed to complete check cycle' });
+    // }
+    
+    // --- Simplified Debug Logic ---
+    console.log('[CRON HANDLER DEBUG] Entered simplified handler.');
+    res.status(200).json({ message: 'Cron handler reached (debug mode).' });
+    console.log('[CRON HANDLER DEBUG] Sent simplified response.');
 });
 
 
@@ -98,17 +104,22 @@ app.use((err, req, res, next) => {
 
 // Start database and server
 async function start() {
+    console.log('[SERVER START] Entering start() function...'); // Added log
     try {
         // Initialize database
+        console.log('[SERVER START] Initializing database...'); // Added log
         await initializeDatabase();
-        console.log('Database initialized');
+        console.log('[SERVER START] Database initialized successfully.'); // Updated log
 
         // Removed: startMonitoring(); - Cron job will trigger checks via API
 
-        // Start server
+        // Start server (Note: app.listen might behave differently in serverless)
+        console.log('[SERVER START] Calling app.listen()...'); // Added log
         const server = app.listen(port, () => {
-            console.log(`Server is running on port ${port}`);
+            // This callback might not execute reliably in Vercel serverless
+            console.log(`[SERVER START] Express server listening callback executed on port ${port}`); 
         });
+        console.log('[SERVER START] app.listen() called.'); // Added log
 
         // Graceful shutdown
         process.on('SIGTERM', () => {
