@@ -1,3 +1,4 @@
+console.log('[SERVER START] Loading server.js module...'); // Added log
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -11,6 +12,7 @@ const statsRoutes = require('./routers/statsRoutes'); // Import stats routes
 const { checkWebsites } = require('./scheduler'); // Import the check function
 
 const app = express();
+console.log('[SERVER START] Express app created.'); // Added log
 const port = process.env.PORT || 3001;
 
 // Middleware
@@ -24,11 +26,13 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+console.log('[SERVER START] Setting up static file serving for production...'); // Added log
 // Serve static files from the React app in production
 if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, '../../dist')));
 }
 
+console.log('[SERVER START] Mounting API routes...'); // Added log
 // API Routes - Reverted to original order
 app.use('/api/auth', authRouter); 
 app.use('/api/public', publicStatusRoutes);
