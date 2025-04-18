@@ -10,6 +10,7 @@ const publicStatusRoutes = require('./routers/publicStatusRoutes'); // Import pu
 const statsRoutes = require('./routers/statsRoutes'); // Import stats routes
 // Removed: const { startMonitoring } = require('./scheduler'); - No longer starting interval here
 const { checkWebsites } = require('./scheduler'); // Import the check function
+console.log(`[SERVER START] Imported checkWebsites: Type = ${typeof checkWebsites}`); // Added import log
 
 const app = express();
 console.log('[SERVER START] Express app created.'); // Added log
@@ -64,9 +65,9 @@ app.post('/api/cron/run-checks', async (req, res) => {
     console.log('[CRON HANDLER] Authorized request received.'); // Added log
 
     try {
-        console.log('[CRON HANDLER] Initiating checkWebsites()...'); // Added log
+        console.log('[CRON HANDLER] About to call await checkWebsites()...'); // Added log before call
         // Await the completion of the checks to ensure logs are captured
-        await checkWebsites(); 
+        await checkWebsites();
         console.log('[CRON HANDLER] checkWebsites() completed.'); // Updated log
         // Send 200 OK now that the work is done (or attempted)
         res.status(200).json({ message: 'Website check cycle completed.' }); 
