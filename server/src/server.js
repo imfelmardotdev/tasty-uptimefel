@@ -14,12 +14,14 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // Middleware
-// Explicitly allow requests from the Vite dev server origin
+// Allow requests from frontend origin (env var for production, localhost for dev)
+const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
+console.log(`[CORS] Allowing origin: ${allowedOrigin}`); // Add log to verify
 const corsOptions = {
-  origin: 'http://localhost:5173', // Allow your frontend origin
-  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+  origin: allowedOrigin,
+  optionsSuccessStatus: 200 
 };
-app.use(cors(corsOptions)); 
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Serve static files from the React app in production
