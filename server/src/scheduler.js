@@ -1,3 +1,4 @@
+console.log('[SCHEDULER_MODULE] Loading scheduler.js module...'); // Added top-level log
 // Removed: const Website = require('./models/Website'); - Not used directly here
 const { performCheck } = require('./monitoring/checker');
 const { getAllWebsites, updateWebsiteStatus, insertCheckHistory } = require('./database/db'); // Import db functions
@@ -7,6 +8,7 @@ const { getDatabase } = require('./database/init'); // Import getDatabase to get
  * Checks all active websites whose check interval has passed.
  */
 const checkWebsites = async () => {
+    console.log('[SCHEDULER_FUNC_ENTRY] Entered checkWebsites function.'); // Added entry log
     console.log('[SCHEDULER] Starting website check cycle...');
     let checkedCount = 0;
     let errorCount = 0;
@@ -59,7 +61,7 @@ const checkWebsites = async () => {
                       } catch (dbError) {
                           console.error(`[SCHEDULER] DATABASE ERROR updating status/history for ${website.name} (ID: ${website.id}):`, dbError);
                           // Rethrow or handle as needed - rethrowing might be caught by the outer loop's catch
-                          throw dbError; 
+                          throw dbError;
                       }
                       console.log(`[SCHEDULER] Check and DB update complete for ${website.name}. Status: ${result.isUp ? 'UP' : 'DOWN'}`);
                 } else if (website.active !== true) {
