@@ -124,8 +124,8 @@ const monitoringService = {
       // Path should be relative to the mount point + apiClient baseURL
       // If baseURL is '/api', this becomes '/api/websites'
       // If baseURL is '', this becomes '/api/websites' (handled by Vercel routing)
-      // If baseURL is 'http://localhost:3001', this becomes 'http://localhost:3001/api/websites'
-      const response = await apiClient.get<Website[]>('/api/websites'); 
+      // If baseURL is 'http://localhost:3001', this becomes 'http://localhost:3001/websites'
+      const response = await apiClient.get<Website[]>('/websites'); // Removed /api prefix
       return response.data;
     } catch (error) {
       console.error('Error fetching websites:', error);
@@ -135,7 +135,7 @@ const monitoringService = {
 
   async getWebsite(id: number): Promise<Website> {
     try {
-      const response = await apiClient.get<Website>(`/api/websites/${id}`); 
+      const response = await apiClient.get<Website>(`/websites/${id}`); // Removed /api prefix
       return response.data;
     } catch (error) {
       console.error(`Error fetching website ${id}:`, error);
@@ -145,7 +145,7 @@ const monitoringService = {
 
   async addWebsite(websiteData: Omit<Website, 'id'>): Promise<Website> {
     try {
-      const response = await apiClient.post<Website>('/api/websites', websiteData); 
+      const response = await apiClient.post<Website>('/websites', websiteData); // Removed /api prefix
       return response.data;
     } catch (error) {
       console.error('Error adding website:', error);
@@ -155,7 +155,7 @@ const monitoringService = {
 
   async updateWebsite(id: number, websiteData: Partial<Omit<Website, 'id'>>): Promise<Website> {
     try {
-      const response = await apiClient.put<Website>(`/api/websites/${id}`, websiteData); 
+      const response = await apiClient.put<Website>(`/websites/${id}`, websiteData); // Removed /api prefix
       return response.data;
     } catch (error) {
       console.error(`Error updating website ${id}:`, error);
@@ -165,28 +165,28 @@ const monitoringService = {
 
   async deleteWebsite(id: number): Promise<void> {
     try {
-      await apiClient.delete(`/api/websites/${id}`); 
+      await apiClient.delete(`/websites/${id}`); // Removed /api prefix
     } catch (error) {
       console.error(`Error deleting website ${id}:`, error);
       throw error;
     }
   },
 
-  async checkWebsiteNow(id: number): Promise<void> {
-     try {
-       // Assuming an endpoint exists to trigger an immediate check
-       await apiClient.post(`/api/websites/${id}/check`);
-     } catch (error) {
-       console.error(`Error triggering check for website ${id}:`, error);
+   async checkWebsiteNow(id: number): Promise<void> {
+      try {
+        // Assuming an endpoint exists to trigger an immediate check
+        await apiClient.post(`/websites/${id}/check`); // Removed /api prefix
+      } catch (error) {
+        console.error(`Error triggering check for website ${id}:`, error);
        throw error;
      }
    },
 
   // --- Stats & Heartbeats ---
-  // These routes likely start with /api/stats, so they should be correct relative to baseURL
+  // These routes likely start with /stats, relative to the /api base URL
   async getRecentHeartbeats(monitorId: number, limit: number = 100): Promise<Heartbeat[]> {
     try {
-      const response = await apiClient.get<Heartbeat[]>(`/api/stats/monitor/${monitorId}/heartbeats`, {
+      const response = await apiClient.get<Heartbeat[]>(`/stats/monitor/${monitorId}/heartbeats`, { // Removed /api prefix
         params: { limit },
       });
       return response.data;
@@ -198,7 +198,7 @@ const monitoringService = {
 
   async getMonitorStats(monitorId: number): Promise<MonitorStatsSummary> {
     try {
-      const response = await apiClient.get<MonitorStatsSummary>(`/api/stats/monitor/${monitorId}/summary`);
+      const response = await apiClient.get<MonitorStatsSummary>(`/stats/monitor/${monitorId}/summary`); // Removed /api prefix
       return response.data;
     } catch (error) {
       console.error(`Error fetching stats summary for monitor ${monitorId}:`, error);
@@ -208,7 +208,7 @@ const monitoringService = {
 
   async getImportantEvents(monitorId: number, limit: number = 50): Promise<ImportantEvent[]> {
      try {
-       const response = await apiClient.get<ImportantEvent[]>(`/api/stats/monitor/${monitorId}/events`, {
+       const response = await apiClient.get<ImportantEvent[]>(`/stats/monitor/${monitorId}/events`, { // Removed /api prefix
          params: { limit },
        });
        return response.data;
@@ -220,7 +220,7 @@ const monitoringService = {
 
    async getChartData(monitorId: number, period: string = '24h'): Promise<ChartDataPoint[]> {
      try {
-       const response = await apiClient.get<ChartDataPoint[]>(`/api/stats/monitor/${monitorId}/chart`, {
+       const response = await apiClient.get<ChartDataPoint[]>(`/stats/monitor/${monitorId}/chart`, { // Removed /api prefix
          params: { period },
        });
        return response.data;
@@ -233,7 +233,7 @@ const monitoringService = {
    // --- Dashboard Summary ---
    async getDashboardSummary(): Promise<DashboardSummary> {
      try {
-       const response = await apiClient.get<DashboardSummary>('/api/stats/summary');
+       const response = await apiClient.get<DashboardSummary>('/stats/summary'); // Removed /api prefix
        return response.data;
      } catch (error) {
        console.error('Error fetching dashboard summary:', error);

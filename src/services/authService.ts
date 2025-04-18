@@ -9,7 +9,7 @@ interface AuthResponse {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || ''; // Get base URL from env or default to relative path
 
 export const login = async (email: string, password: string): Promise<AuthResponse> => {
-    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, { // Removed /api prefix
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -26,7 +26,7 @@ export const login = async (email: string, password: string): Promise<AuthRespon
 };
 
 export const register = async (email: string, password: string): Promise<AuthResponse> => {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    const response = await fetch(`${API_BASE_URL}/auth/register`, { // Removed /api prefix
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -57,7 +57,7 @@ export const logout = (): void => {
 
 
 export const verifyToken = async (token: string): Promise<{ user: { id: number; email: string } }> => {
-    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    const response = await fetch(`${API_BASE_URL}/auth/me`, { // Removed /api prefix
         headers: {
             'Authorization': `Bearer ${token}`,
         },
