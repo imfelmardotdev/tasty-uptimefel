@@ -18,19 +18,16 @@ class PublicStatusController {
             // Fetch heartbeats for each website concurrently
             const publicStatusData = await Promise.all(websites.map(async (site) => {
                 try {
-                    const heartbeats = await new Promise((resolve, reject) => {
-                        const sql = `
-                            SELECT timestamp, status, ping, message
-                            FROM heartbeats
-                            WHERE website_id = ?
-                            ORDER BY timestamp DESC
-                            LIMIT ?
-                        `;
-                        db.all(sql, [site.id, heartbeatLimit], (err, rows) => {
-                            if (err) reject(err);
-                            else resolve((rows || []).reverse()); // Oldest first
-                        });
-                    });
+                    // Use pg syntax: db.query and $1, $2 placeholders
+                    const sql = `
+                        SELECT timestamp, status, ping, message
+                        FROM heartbeats
+                        WHERE website_id = $1
+                        ORDER BY timestamp DESC
+                        LIMIT $2
+                    `;
+                    const result = await db.query(sql, [site.id, heartbeatLimit]);
+                    const heartbeats = (result.rows || []).reverse(); // Get rows and reverse (oldest first)
 
                      return {
                          id: site.id,

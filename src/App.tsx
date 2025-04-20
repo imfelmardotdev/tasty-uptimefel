@@ -12,14 +12,14 @@ function App() {
     <> 
       <Routes>
         {/* Public routes */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/status" element={<PublicStatusPage />} /> {/* Add public status page route */}
+        <Route path="/" element={<PublicStatusPage />} /> {/* Root path now shows public status */}
+        <Route path="/signin" element={<LoginPage />} /> {/* Login page moved to /signin */}
+        {/* Removed <Route path="/status" element={<PublicStatusPage />} /> */}
 
         {/* Protected routes */}
         <Route element={<PrivateRoute />}>
           <Route element={<DashboardLayout />}>
-             {/* Redirect base path to dashboard */}
-             <Route path="/" element={<Navigate to="/dashboard" replace />} />
+             {/* Removed <Route path="/" element={<Navigate to="/dashboard" replace />} /> */}
              <Route path="/dashboard" element={<MonitoringDashboard />} />
              <Route path="/monitor/:id" element={<MonitorDetailsPage />} /> {/* Add monitor details route */}
              {/* Add other protected dashboard routes here if needed */}
