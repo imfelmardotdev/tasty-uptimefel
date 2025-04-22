@@ -238,13 +238,34 @@ const StatsController = {
                 }
             });
 
-            // Placeholder data needs implementation
+            // Calculate overall 24h uptime dynamically
+            let totalUptimeSum24h = 0;
+            let activeMonitorCount = 0;
+            for (const website of rows) {
+                if (website.active === true) {
+                    activeMonitorCount++;
+                    try {
+                        // Get calculator for each active monitor
+                        const calculator = await UptimeCalculator.getUptimeCalculator(website.id); // Assuming website.id is available
+                        const uptimeData = calculator.getUptimeData(24 * 60, 'minute'); // 24h uptime
+                        totalUptimeSum24h += uptimeData.uptime; // Sum individual uptimes
+                    } catch (calcError) {
+                        log.error(`[StatsController] Error getting UptimeCalculator for monitor ${website.id} in summary:`, calcError);
+                        // Handle error, maybe exclude this monitor from average or assume 0 uptime?
+                        // For simplicity, we'll exclude it from the average calculation here.
+                        activeMonitorCount--; // Decrement count if calculator fails
+                    }
+                }
+            }
+            const overallUptime24h = activeMonitorCount > 0 ? (totalUptimeSum24h / activeMonitorCount) * 100 : 100; // Average uptime, default to 100% if no active monitors
+
+            // Placeholder data for incidents (needs implementation)
             const summaryData = {
                 up: upCount,
                 down: downCount,
                 paused: pausedCount,
                 total: rows.length,
-                overallUptime24h: 99.99, // Placeholder
+                overallUptime24h: parseFloat(overallUptime24h.toFixed(4)), // Use calculated value
                 incidents24h: 0,        // Placeholder
                 daysWithoutIncidents: 1, // Placeholder
                 affectedMonitors24h: 0   // Placeholder
