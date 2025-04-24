@@ -22,6 +22,7 @@ function App() {
              {/* Removed <Route path="/" element={<Navigate to="/dashboard" replace />} /> */}
              <Route path="/dashboard" element={<MonitoringDashboard />} />
              <Route path="/monitor/:id" element={<MonitorDetailsPage />} /> {/* Add monitor details route */}
+             <Route path="/status" element={<PublicStatusPage />} /> {/* Add status page route */}
              {/* Add other protected dashboard routes here if needed */}
            </Route>
          </Route>
