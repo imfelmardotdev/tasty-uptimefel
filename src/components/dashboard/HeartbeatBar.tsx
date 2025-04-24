@@ -88,19 +88,20 @@ const HeartbeatBar: React.FC<HeartbeatBarProps> = ({
 
   // --- Displayed Beats Logic ---
   const displayedBeats = useMemo(() => {
+    // Return empty array if no data or component not mounted yet
     if (!heartbeats || heartbeats.length === 0 || !isMounted) {
-      return Array(maxBeatState).fill({ status: -1, placeholder: true }); // Fill with placeholders if no data or not mounted
+      return [];
     }
 
     const numBeats = heartbeats.length;
+    // Determine the actual beats to show, limited by maxBeatState
     const beatsToDisplay = Math.min(numBeats, maxBeatState);
+    // Get the most recent beats
     const startIndex = numBeats - beatsToDisplay;
     const visible = heartbeats.slice(startIndex);
 
-    const paddingCount = maxBeatState - visible.length;
-    const padding = Array(paddingCount).fill({ status: -1, placeholder: true }); // Placeholder object
-
-    return [...padding, ...visible];
+    // Return only the actual visible heartbeats, without placeholders
+    return visible;
   }, [heartbeats, maxBeatState, isMounted]); // Depend on isMounted
 
   // --- Styles ---

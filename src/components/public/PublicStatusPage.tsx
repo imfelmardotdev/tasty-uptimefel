@@ -152,23 +152,30 @@ const PublicStatusPage = () => {
                                         {/* Added URL display */}
                                         <div className="text-xs text-gray-500 truncate">{monitor.url}</div>
                                     </div>
-                                    {/* Display uptime % (using placeholder value for now) */}
-                                    <div className="text-sm text-green-600 w-16 text-right">
-                                        {typeof monitor.uptime_percent_90d === 'number'
-                                            ? `${monitor.uptime_percent_90d.toFixed(3)}%`
-                                            : 'N/A'}
-                                    </div>
-                                    <div className="flex-grow min-w-[200px] w-full order-last sm:order-none">
-                                        <HeartbeatBar
-                                            monitorId={monitor.id}
-                                            heartbeats={monitor.heartbeats || []}
-                                            size="small"
-                                            maxBeats={90} // Adjust based on desired timeframe (e.g., 90 for 90 days)
-                                        />
-                                    </div>
-                                    <div className="flex items-center space-x-1.5 w-16 justify-end">
-                                        <div className={`h-2.5 w-2.5 rounded-full ${getStatusColorClass(monitor.is_up)}`}></div>
-                                        <span className={`text-sm ${monitor.is_up === false ? 'text-red-600' : 'text-gray-600'}`}>{getStatusText(monitor.is_up)}</span>
+                                    {/* Conditionally Display uptime % */}
+                                    {typeof monitor.uptime_percent_90d === 'number' ? (
+                                        <div className="text-sm text-green-600 w-16 text-right flex-shrink-0">
+                                            {`${monitor.uptime_percent_90d.toFixed(3)}%`}
+                                        </div>
+                                    ) : (
+                                        <div className="w-16 flex-shrink-0"></div> // Render an empty div of the same width to maintain alignment
+                                    )}
+                                    {/* Wrapper for Heartbeat Bar and Status Indicator */}
+                                    <div className="flex flex-grow items-center gap-x-2 min-w-[250px] w-full sm:w-auto">
+                                        {/* Heartbeat Bar Container */}
+                                        <div className="flex-grow min-w-[200px]">
+                                            <HeartbeatBar
+                                                monitorId={monitor.id}
+                                                heartbeats={monitor.heartbeats || []}
+                                                size="small"
+                                                maxBeats={90} // Adjust based on desired timeframe (e.g., 90 for 90 days)
+                                            />
+                                        </div>
+                                        {/* Status Indicator Container */}
+                                        <div className="flex items-center space-x-1.5 flex-shrink-0">
+                                            <div className={`h-2.5 w-2.5 rounded-full ${getStatusColorClass(monitor.is_up)}`}></div>
+                                            <span className={`text-sm ${monitor.is_up === false ? 'text-red-600' : 'text-gray-600'}`}>{getStatusText(monitor.is_up)}</span>
+                                        </div>
                                     </div>
                                 </div>
                             )))}
