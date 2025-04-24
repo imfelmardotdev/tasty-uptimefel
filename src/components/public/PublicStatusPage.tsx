@@ -158,7 +158,7 @@ const PublicStatusPage = () => {
                                             ? `${monitor.uptime_percent_90d.toFixed(3)}%`
                                             : 'N/A'}
                                     </div>
-                                    <div className="flex-grow min-w-[200px] w-full sm:w-auto order-last sm:order-none">
+                                    <div className="flex-grow min-w-[200px] w-full order-last sm:order-none">
                                         <HeartbeatBar
                                             monitorId={monitor.id}
                                             heartbeats={monitor.heartbeats || []}
