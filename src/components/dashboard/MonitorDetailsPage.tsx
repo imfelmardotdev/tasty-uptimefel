@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom'; // Import useNavigate
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ExternalLink, Pause, Play, Edit, Trash2, BarChart, ShieldCheck, AlertTriangle } from 'lucide-react'; // Removed Copy
-import HeartbeatBar from './HeartbeatBar';
-import EditWebsiteDialog from './EditWebsiteDialog'; // Import Edit Dialog
-import monitoringService, { Website as Monitor, Heartbeat, MonitorStatsSummary, ImportantEvent, Website } from '@/services/monitoringService'; // Import the updated service and types
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+ import { Badge } from '@/components/ui/badge';
+ import { ExternalLink, Pause, Play, Edit, Trash2, BarChart, ShieldCheck, AlertTriangle, RefreshCw } from 'lucide-react'; // Add RefreshCw
+ import HeartbeatBar from './HeartbeatBar';
+ import EditWebsiteDialog from './EditWebsiteDialog'; // Import Edit Dialog
+ import { useToast } from "@/components/ui/use-toast"; // Import useToast
+ import monitoringService, { Website as Monitor, Heartbeat, MonitorStatsSummary, ImportantEvent, Website } from '@/services/monitoringService'; // Import the updated service and types
+ import dayjs from 'dayjs';
+ import relativeTime from 'dayjs/plugin/relativeTime';
 
 dayjs.extend(relativeTime);
 
@@ -23,12 +24,14 @@ const MonitorDetailsPage: React.FC = () => {
     const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([]);
     const [stats, setStats] = useState<MonitorStatsSummary | null>(null);
     const [importantEvents, setImportantEvents] = useState<ImportantEvent[]>([]); // Use specific type
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false); // State for edit dialog
-
-    // --- Real Data Fetching ---
-    const fetchMonitorData = async () => {
+     const [loading, setLoading] = useState(true);
+     const [error, setError] = useState<string | null>(null);
+     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false); // State for edit dialog
+     const { toast } = useToast(); // Initialize toast
+     const [isChecking, setIsChecking] = useState(false); // State for check now button
+ 
+     // --- Real Data Fetching ---
+     const fetchMonitorData = async () => {
         // Keep loading true only on initial load
         // setLoading(true);
         setError(null);
@@ -89,12 +92,11 @@ const MonitorDetailsPage: React.FC = () => {
             // Optimistic update
             setMonitor(prev => prev ? { ...prev, active: false } : null);
             await monitoringService.updateWebsite(monitor.id, { active: false }); // Send boolean false
-            // TODO: Add success toast notification
+            toast({ title: "Monitor Paused", description: `${monitor.name} has been paused.` });
         } catch (err) {
              console.error("Error pausing monitor:", err);
-             // Revert optimistic update on error
              setMonitor(prev => prev ? { ...prev, active: originalState } : null);
-             // TODO: Add error toast
+             toast({ title: "Error", description: "Failed to pause monitor.", variant: "destructive" });
         }
     };
     const handleResume = async () => {
@@ -104,12 +106,11 @@ const MonitorDetailsPage: React.FC = () => {
             // Optimistic update
             setMonitor(prev => prev ? { ...prev, active: true } : null);
             await monitoringService.updateWebsite(monitor.id, { active: true }); // Send boolean true
-            // TODO: Add success toast notification
+            toast({ title: "Monitor Resumed", description: `${monitor.name} has been resumed.` });
          } catch (err) {
               console.error("Error resuming monitor:", err);
-              // Revert optimistic update on error
               setMonitor(prev => prev ? { ...prev, active: originalState } : null);
-              // TODO: Add error toast
+              toast({ title: "Error", description: "Failed to resume monitor.", variant: "destructive" });
          }
     };
     const handleDelete = async () => {
@@ -118,22 +119,46 @@ const MonitorDetailsPage: React.FC = () => {
         if (window.confirm(`Are you sure you want to delete monitor "${monitor.name}"?`)) {
             try {
                 await monitoringService.deleteWebsite(monitor.id);
-                // TODO: Add success toast notification
+                toast({ title: "Monitor Deleted", description: `${monitor.name} has been deleted.` });
                 navigate('/dashboard'); // Navigate back to dashboard
             } catch (err) {
                  console.error("Error deleting monitor:", err);
-                 // TODO: Add error toast
+                 toast({ title: "Error", description: "Failed to delete monitor.", variant: "destructive" });
             }
         }
      };
  
       // Handler for successful update from Edit dialog
-      // This function receives the *already updated* monitor object from the dialog's internal submit handler
       const handleUpdateWebsite = (updatedMonitor: Website) => {
           setMonitor(updatedMonitor); // Update local state with the data returned by the dialog's onUpdate prop
           setIsEditDialogOpen(false); // Close the dialog
-          // TODO: Add success toast notification here if desired
+          toast({ title: "Monitor Updated", description: `${updatedMonitor.name} settings saved.` });
       };
+
+    // --- Handler for Check Now ---
+    const handleCheckNow = async () => {
+        if (!monitor) return;
+        setIsChecking(true);
+        try {
+            await monitoringService.checkWebsiteNow(monitor.id);
+            toast({
+                title: "Check Triggered",
+                description: `Manual check initiated for ${monitor.name}. Status will update shortly.`,
+            });
+            // Optionally, trigger a data refresh after a short delay to show new heartbeat
+            setTimeout(fetchMonitorData, 3000); // Refresh after 3s
+        } catch (err) {
+            console.error("Error triggering check:", err);
+            toast({
+                title: "Error",
+                description: "Failed to trigger manual check.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsChecking(false);
+        }
+    };
+    // --- End Handler for Check Now ---
 
     const getStatusColor = (status: number) => {
         switch (status) {
@@ -214,6 +239,11 @@ const MonitorDetailsPage: React.FC = () => {
                     )}
                     {/* Edit button - opens dialog */}
                     <Button variant="outline" size="sm" onClick={() => setIsEditDialogOpen(true)}><Edit className="mr-2 h-4 w-4" /> Edit</Button>
+                    {/* Add Check Now button */}
+                    <Button variant="outline" size="sm" onClick={handleCheckNow} disabled={isChecking || !monitor.active}>
+                        <RefreshCw className={`mr-2 h-4 w-4 ${isChecking ? 'animate-spin' : ''}`} />
+                        {isChecking ? 'Checking...' : 'Check Now'}
+                    </Button>
                     {/* Clone button removed */}
                     <Button variant="destructive" size="sm" onClick={handleDelete}><Trash2 className="mr-2 h-4 w-4" /> Delete</Button>
                 </div>

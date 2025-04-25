@@ -1,5 +1,6 @@
 // server/run-migrations.js
-require('dotenv').config(); // Load .env if you put the URL there
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') }); // Correct path to server/.env
 const { initializeDatabase, getDatabase } = require('./src/database/init');
 const MigrationRunner = require('./src/database/migration-runner');
 

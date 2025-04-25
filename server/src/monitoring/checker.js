@@ -1,9 +1,11 @@
 const axios = require('axios');
 const UptimeCalculator = require('../services/UptimeCalculator');
-const { log } = require('../utils/logger');
-const dayjs = require('dayjs');
-const https = require('https');
-const tls = require('tls');
+ const { log } = require('../utils/logger');
+ const dayjs = require('dayjs');
+ const https = require('https');
+ const tls = require('tls');
+ const db = require('../database/db'); // Import database functions
+ const { triggerWebhookAlert } = require('../alerting/webhook'); // Import alert function
 
 // Monitor types
 const MONITOR_HTTP = 'http';
@@ -324,9 +326,25 @@ const checkKeyword = (body, config) => {
  * @param {object} website The website configuration object
  * @returns {Promise<object>} Check result
  */
-const performCheck = async (website) => {
-    const axiosInstance = createAxiosInstance(website);
-    let checkResult = await performCheckWithRetries(website, axiosInstance);
+ const performCheck = async (website) => {
+     // --- Get previous status BEFORE performing the check ---
+     let previousStatus = null;
+     try {
+         // We need the full website object including status from the DB
+         // Use the existing db.getWebsite function which includes status
+         const currentWebsiteState = await db.getWebsite(website.id);
+         if (currentWebsiteState) {
+             previousStatus = currentWebsiteState.is_up; // is_up is boolean in PG
+         }
+         log.debug(`[Checker] Previous status for monitor ${website.id}: ${previousStatus}`);
+     } catch (dbError) {
+         log.error(`[Checker] Failed to get previous status for monitor ${website.id}:`, dbError);
+         // Continue check, but alerting might be based on null previousStatus
+     }
+     // --- End Get previous status ---
+ 
+     const axiosInstance = createAxiosInstance(website);
+     let checkResult = await performCheckWithRetries(website, axiosInstance);
 
     // Additional checks for HTTPS certificate (Keyword check is now integrated into performCheckWithRetries)
     if (website.monitor_type === MONITOR_HTTPS && checkResult.isUp) {
@@ -372,11 +390,25 @@ const performCheck = async (website) => {
         await calculator.update(heartbeatData);
         log.debug(`[Checker] Updated stats for monitor ${website.id}`);
     } catch (error) {
-        log.error(`[Checker] Failed to update UptimeCalculator for monitor ${website.id}:`, error);
-    }
-
-    return checkResult;
-};
+         log.error(`[Checker] Failed to update UptimeCalculator for monitor ${website.id}:`, error);
+     }
+ 
+     // --- Trigger Alert on Status Change ---
+     // Compare the current check result status with the status before the check
+     if (previousStatus !== null && typeof checkResult.isUp === 'boolean' && checkResult.isUp !== previousStatus) {
+         log.info(`[Checker] Status change detected for monitor ${website.id}: ${previousStatus} -> ${checkResult.isUp}. Triggering alert.`);
+         // Use await here because triggerWebhookAlert is async
+         // Pass the original website object (contains name etc.), the check result, and the previous status
+         await triggerWebhookAlert(website, checkResult, previousStatus);
+     } else if (previousStatus === null) {
+         log.debug(`[Checker] Skipping alert for monitor ${website.id} on initial check (previous status was null).`);
+     } else {
+          log.debug(`[Checker] No status change detected for monitor ${website.id}. Current status: ${checkResult.isUp}`);
+     }
+     // --- End Trigger Alert ---
+ 
+     return checkResult;
+ };
 
 module.exports = {
     performCheck,

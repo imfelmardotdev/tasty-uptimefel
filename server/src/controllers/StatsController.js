@@ -208,12 +208,13 @@ const StatsController = {
 
         try {
             const db = getDatabase();
-            // Use $1 placeholder for pg
-            const sql = `
-                SELECT
-                    mw.active,
-                    ws.is_up
-                FROM
+             // Use $1 placeholder for pg
+             const sql = `
+                 SELECT
+                     mw.id, -- Select the website ID
+                     mw.active,
+                     ws.is_up
+                 FROM
                     monitored_websites mw
                 LEFT JOIN
                     website_status ws ON mw.id = ws.website_id

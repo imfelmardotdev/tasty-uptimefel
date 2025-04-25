@@ -2,10 +2,11 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from './components/ui/toaster';
 import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './components/auth/LoginPage';
-import MonitoringDashboard from './components/dashboard/MonitoringDashboard';
-import MonitorDetailsPage from './components/dashboard/MonitorDetailsPage'; // Import details page
-import PrivateRoute from './components/auth/PrivateRoute.tsx'; // Added .tsx extension
-import PublicStatusPage from './components/public/PublicStatusPage'; // Import the new page
+ import MonitoringDashboard from './components/dashboard/MonitoringDashboard';
+ import MonitorDetailsPage from './components/dashboard/MonitorDetailsPage'; // Import details page
+ import NotificationSettingsPage from './components/settings/NotificationSettingsPage'; // Import settings page
+ import PrivateRoute from './components/auth/PrivateRoute.tsx'; // Added .tsx extension
+ import PublicStatusPage from './components/public/PublicStatusPage'; // Import the new page
 
 function App() {
   return (
@@ -20,11 +21,12 @@ function App() {
         <Route element={<PrivateRoute />}>
           <Route element={<DashboardLayout />}>
              {/* Removed <Route path="/" element={<Navigate to="/dashboard" replace />} /> */}
-             <Route path="/dashboard" element={<MonitoringDashboard />} />
-             <Route path="/monitor/:id" element={<MonitorDetailsPage />} /> {/* Add monitor details route */}
-             <Route path="/status" element={<PublicStatusPage />} /> {/* Add status page route */}
-             {/* Add other protected dashboard routes here if needed */}
-           </Route>
+              <Route path="/dashboard" element={<MonitoringDashboard />} />
+              <Route path="/monitor/:id" element={<MonitorDetailsPage />} /> {/* Add monitor details route */}
+              <Route path="/settings" element={<NotificationSettingsPage />} /> {/* Add settings route */}
+              <Route path="/status" element={<PublicStatusPage />} /> {/* Add status page route */}
+              {/* Add other protected dashboard routes here if needed */}
+            </Route>
          </Route>
 
         {/* Optional: Add a 404 Not Found route */}

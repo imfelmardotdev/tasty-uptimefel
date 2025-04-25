@@ -9,12 +9,13 @@ import {
     BarChart3,      // Status pages (using bar chart as placeholder)
     Wrench,         // Maintenance
     Users,          // Team members
-    Share2,         // Integrations & API (using share as placeholder)
-    LogOut,         // Logout
-    LifeBuoy,       // Placeholder for Upgrade icon
-    ChevronDown,    // Placeholder for dropdowns
-    Check           // Placeholder for checkmark
-} from 'lucide-react';
+     Share2,         // Integrations & API (using share as placeholder)
+     Settings,       // Settings icon
+     LogOut,         // Logout
+     LifeBuoy,       // Placeholder for Upgrade icon
+     ChevronDown,    // Placeholder for dropdowns
+     Check           // Placeholder for checkmark
+ } from 'lucide-react';
 
 // Define the structure for navigation items
 interface NavItemProps {
@@ -58,11 +59,12 @@ const Sidebar = () => {
 
             {/* Navigation */}
             <nav className="flex-1 px-2 py-4 space-y-1">
-                <NavItem to="/dashboard" icon={LayoutDashboard} label="Monitoring" />
-                {/* <NavItem to="/incidents" icon={ShieldAlert} label="Incidents" /> */}
-                <NavItem to="/status" icon={BarChart3} label="Status pages" />
-                {/* <NavItem to="/maintenance" icon={Wrench} label="Maintenance" /> */}
-                {/* <NavItem to="/team" icon={Users} label="Team members" /> */}
+                 <NavItem to="/dashboard" icon={LayoutDashboard} label="Monitoring" />
+                 {/* <NavItem to="/incidents" icon={ShieldAlert} label="Incidents" /> */}
+                 <NavItem to="/status" icon={BarChart3} label="Status pages" />
+                 {/* <NavItem to="/maintenance" icon={Wrench} label="Maintenance" /> */}
+                 <NavItem to="/settings" icon={Settings} label="Settings" /> {/* Add Settings link */}
+                 {/* <NavItem to="/team" icon={Users} label="Team members" /> */}
                 {/* <NavItem to="/integrations" icon={Share2} label="Integrations & API" /> */}
             </nav>
 

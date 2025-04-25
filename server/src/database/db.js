@@ -427,9 +427,66 @@ const getWebsiteHistory = async (websiteId, options = {}) => {
          throw err;
      }
  };
-
-module.exports = {
-    findUserByEmail,
+ 
+ /**
+  * Gets the global notification settings
+  * @returns {Promise<object|null>} Notification settings object or null if not found
+  */
+ const getNotificationSettings = async () => {
+     // Assuming there's only one row with id = 1 for global settings
+     const sql = 'SELECT id, webhook_url, webhook_enabled FROM notification_settings WHERE id = 1';
+     try {
+         const result = await getDatabase().query(sql);
+         const row = result.rows[0];
+         if (row) {
+             // Map boolean from DB if necessary (pg driver usually handles it)
+             return {
+                 ...row,
+                 webhook_enabled: row.webhook_enabled // Should be boolean already
+             };
+         }
+         return null; // Should not happen if migration inserted the row
+     } catch (err) {
+         console.error('Error getting notification settings:', err);
+         throw err;
+     }
+ };
+ 
+ /**
+  * Updates the global notification settings
+  * @param {object} settings Object containing { webhook_url, webhook_enabled }
+  * @returns {Promise<object>} Updated notification settings object
+  */
+ const updateNotificationSettings = async (settings) => {
+     const sql = `
+         UPDATE notification_settings
+         SET webhook_url = $1, webhook_enabled = $2
+         WHERE id = 1
+         RETURNING id, webhook_url, webhook_enabled
+     `;
+     // Ensure boolean type for webhook_enabled
+     const params = [
+         settings.webhook_url ?? '', // Use empty string if null/undefined
+         settings.webhook_enabled === true || settings.webhook_enabled === 'true' || settings.webhook_enabled === 1 // Coerce to boolean
+     ];
+     try {
+         const result = await getDatabase().query(sql, params);
+         if (result.rows.length > 0) {
+              return {
+                 ...result.rows[0],
+                 webhook_enabled: result.rows[0].webhook_enabled // Should be boolean
+             };
+         } else {
+             throw new Error('Failed to update notification settings.');
+         }
+     } catch (err) {
+         console.error('Error updating notification settings:', err);
+         throw err;
+     }
+ };
+ 
+ module.exports = {
+     findUserByEmail,
     findUserById,
     createUser,
     getAllWebsites,
@@ -441,5 +498,7 @@ module.exports = {
     getLatestCheck,
     insertCheckHistory,
     updateWebsiteStatus,
-    getWebsiteHistory
-};
+     getWebsiteHistory,
+     getNotificationSettings,
+     updateNotificationSettings
+ };

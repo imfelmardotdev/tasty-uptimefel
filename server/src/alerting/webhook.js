@@ -1,5 +1,8 @@
+const axios = require('axios');
+const { getNotificationSettings } = require('../database/db'); // Import DB function
+
 /**
- * Placeholder function to simulate sending a webhook alert.
+ * Sends a webhook alert if configured and enabled.
  * @param {object} website - The website object { id, url, name }
  * @param {object} checkResult - The check result object { statusCode, isUp, responseTimeMs }
  * @param {boolean} previousStatus - The previous 'is_up' status (true or false)
@@ -13,14 +16,60 @@ const triggerWebhookAlert = async (website, checkResult, previousStatus) => {
   console.log(`Status Change: ${previousStatusText} -> ${currentStatus}`);
   console.log(`Details: Status Code=${checkResult.statusCode}, Response Time=${checkResult.responseTimeMs}ms`);
   console.log(`Timestamp: ${new Date().toISOString()}`);
-  console.log(`(Webhook sending logic would go here)`);
   console.log(`-------------`);
 
-  // TODO: Implement actual webhook sending logic here
-  // 1. Fetch webhook configuration for the website (e.g., from a new DB table or config file)
-  // 2. Construct the payload (JSON)
-  // 3. Use axios or node-fetch to send a POST request to the configured webhook URL(s)
-  // 4. Handle potential errors during sending
+  // --- Actual Webhook Sending Logic ---
+  try {
+    const settings = await getNotificationSettings();
+
+    if (settings && settings.webhook_enabled && settings.webhook_url) {
+      const webhookUrl = settings.webhook_url;
+      const payload = {
+        website: {
+          id: website.id,
+          name: website.name,
+          url: website.url,
+        },
+        statusChange: {
+          from: previousStatusText,
+          to: currentStatus,
+        },
+        checkResult: {
+          statusCode: checkResult.statusCode,
+          responseTimeMs: checkResult.responseTimeMs,
+          isUp: checkResult.isUp,
+          error: checkResult.error_message || null, // Include error if present
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      console.log(`Sending webhook to: ${webhookUrl}`);
+      await axios.post(webhookUrl, payload, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000 // 10 second timeout
+      });
+      console.log(`Webhook sent successfully for website ID: ${website.id}`);
+
+    } else {
+      console.log(`Webhook notifications are disabled or URL is not configured. Skipping send for website ID: ${website.id}`);
+    }
+  } catch (error) {
+      console.error(`Error sending webhook for website ID ${website.id}:`, error.message);
+      if (error.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          console.error('Webhook Error Response Data:', error.response.data);
+          console.error('Webhook Error Response Status:', error.response.status);
+          console.error('Webhook Error Response Headers:', error.response.headers);
+      } else if (error.request) {
+          // The request was made but no response was received
+          console.error('Webhook Error Request:', error.request);
+      } else {
+          // Something happened in setting up the request that triggered an Error
+          console.error('Webhook Error Message:', error.message);
+      }
+  }
+  // --- End Webhook Sending Logic ---
 };
 
 module.exports = {

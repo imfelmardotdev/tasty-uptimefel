@@ -8,6 +8,7 @@ const { authRouter } = require('./auth/auth'); // Import authRouter
 const websiteRoutes = require('./routers/websiteRoutes');
 const publicStatusRoutes = require('./routers/publicStatusRoutes'); // Import public routes
 const statsRoutes = require('./routers/statsRoutes'); // Import stats routes
+const notificationRoutes = require('./routers/notificationRoutes'); // Import notification routes
 // Removed: const { startMonitoring } = require('./scheduler'); - No longer starting interval here
 const { checkWebsites } = require('./scheduler'); // Import the check function
 console.log(`[SERVER START] Imported checkWebsites: Type = ${typeof checkWebsites}`); // Added import log
@@ -43,7 +44,8 @@ console.log('[SERVER START] Mounting API routes...'); // Added log
 // API Routes - Reverted to original order
 app.use('/api/auth', authRouter); 
 app.use('/api/public', publicStatusRoutes);
-app.use('/api/stats', statsRoutes); 
+app.use('/api/stats', statsRoutes);
+app.use('/api/notifications', notificationRoutes); // Mount notification routes
 app.use('/api/websites', websiteRoutes); // Mount website routes under /api/websites
 
 // Cron Job Endpoint (protected by secret)

@@ -113,9 +113,16 @@ export interface DashboardSummary {
     overallUptime24h?: number;
     incidents24h?: number;
     daysWithoutIncidents?: number;
-    affectedMonitors24h?: number;
-}
-
+     affectedMonitors24h?: number;
+ }
+ 
+ // Define interface for Notification Settings
+ export interface NotificationSettings {
+     id: number; // Should always be 1 for the single global row
+     webhook_url: string;
+     webhook_enabled: boolean;
+ }
+ 
 
 const monitoringService = {
   // --- Website CRUD ---
@@ -238,11 +245,33 @@ const monitoringService = {
      } catch (error) {
        console.error('Error fetching dashboard summary:', error);
        throw error;
+      }
+    },
+ 
+   // --- Notification Settings ---
+   async getNotificationSettings(): Promise<NotificationSettings> {
+     try {
+       // Path is relative to apiClient baseURL + /notifications/settings
+       const response = await apiClient.get<NotificationSettings>('/notifications/settings');
+       return response.data;
+     } catch (error) {
+       console.error('Error fetching notification settings:', error);
+       throw error;
      }
    },
-
-  // --- Listener pattern (optional, for WebSocket integration later) ---
-  // listeners: { [key: string]: Function[] } = {
+ 
+   async updateNotificationSettings(settings: Omit<NotificationSettings, 'id'>): Promise<NotificationSettings> {
+     try {
+       const response = await apiClient.put<NotificationSettings>('/notifications/settings', settings);
+       return response.data;
+     } catch (error) {
+       console.error('Error updating notification settings:', error);
+       throw error;
+     }
+   },
+ 
+   // --- Listener pattern (optional, for WebSocket integration later) ---
+   // listeners: { [key: string]: Function[] } = {
   //   monitorUpdate: [], // Example event name
   // },
 
