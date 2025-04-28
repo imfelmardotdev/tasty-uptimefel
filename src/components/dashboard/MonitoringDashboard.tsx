@@ -184,7 +184,7 @@ const MonitoringDashboard = () => {
         <div className="flex flex-col h-full">
             {/* Header Section */}
             <div className="mb-6">
-                <h1 className="text-3xl font-semibold text-gray-900">Monitors.</h1>
+                <h1 className="text-3xl font-semibold text-gray-900">Website monitor</h1>
                 {/* Optional: Add subtitle if needed */}
             </div>
 

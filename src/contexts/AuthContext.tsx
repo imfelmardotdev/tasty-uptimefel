@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { login as authLogin, register as authRegister } from '../services/authService';
 
 interface User {
@@ -75,10 +76,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('authToken', authToken); // Use 'authToken' key
     };
 
+    const navigate = useNavigate();
+    
     const logout = () => {
         setUser(null);
         setToken(null);
         localStorage.removeItem('authToken'); // Use 'authToken' key
+        navigate('/');
     };
 
     const value = {
