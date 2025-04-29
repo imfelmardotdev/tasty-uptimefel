@@ -149,8 +149,17 @@ const PublicStatusPage = () => {
                                     {/* Container for name and URL */}
                                     <div className="flex-1 min-w-[150px]">
                                         <div className="font-medium text-gray-800 truncate">{monitor.name}</div>
-                                        {/* Added URL display */}
-                                        <div className="text-xs text-gray-500 truncate">{monitor.url}</div>
+                        {/* URL display as clickable link */}
+                        {monitor.url && (
+                            <a
+                                href={monitor.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-500 hover:text-blue-700 truncate block"
+                            >
+                                {monitor.url}
+                            </a>
+                        )}
                                     </div>
                                     {/* Conditionally Display uptime % */}
                                     {typeof monitor.uptime_percent_90d === 'number' ? (
