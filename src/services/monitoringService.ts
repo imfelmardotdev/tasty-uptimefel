@@ -95,12 +95,13 @@ export interface ImportantEvent {
 }
 
 export interface ChartDataPoint {
-    // Assuming backend returns these for /chart endpoint
-    timestamp: number; // Unix timestamp
-    avgPing?: number | null;
-    up?: number;
-    down?: number;
-    maintenance?: number;
+    timestamp: string;
+    responseTime: number;
+    status: "up" | "down";
+    uptime: number;
+    requestCount: number;
+    successCount: number;
+    failureCount: number;
 }
 
 // Define interface for the new dashboard summary endpoint

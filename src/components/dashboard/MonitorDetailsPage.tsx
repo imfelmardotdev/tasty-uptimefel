@@ -7,7 +7,15 @@ import { Button } from '@/components/ui/button';
  import HeartbeatBar from './HeartbeatBar';
  import EditWebsiteDialog from './EditWebsiteDialog'; // Import Edit Dialog
  import { useToast } from "@/components/ui/use-toast"; // Import useToast
- import monitoringService, { Website as Monitor, Heartbeat, MonitorStatsSummary, ImportantEvent, Website } from '@/services/monitoringService'; // Import the updated service and types
+ import monitoringService, { 
+  Website as Monitor, 
+  Heartbeat, 
+  MonitorStatsSummary, 
+  ImportantEvent, 
+  Website,
+  ChartDataPoint 
+} from '@/services/monitoringService';
+import PerformanceChart from './PerformanceChart';
  import dayjs from 'dayjs';
  import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -20,10 +28,12 @@ const MonitorDetailsPage: React.FC = () => {
     const navigate = useNavigate(); // Initialize useNavigate
     const monitorId = parseInt(id || '0', 10);
 
-    const [monitor, setMonitor] = useState<Monitor | null>(null);
-    const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([]);
-    const [stats, setStats] = useState<MonitorStatsSummary | null>(null);
-    const [importantEvents, setImportantEvents] = useState<ImportantEvent[]>([]); // Use specific type
+  const [monitor, setMonitor] = useState<Monitor | null>(null);
+  const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([]);
+  const [stats, setStats] = useState<MonitorStatsSummary | null>(null);
+  const [importantEvents, setImportantEvents] = useState<ImportantEvent[]>([]); // Use specific type
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [chartTimeRange, setChartTimeRange] = useState('24h');
      const [loading, setLoading] = useState(true);
      const [error, setError] = useState<string | null>(null);
      const [isEditDialogOpen, setIsEditDialogOpen] = useState(false); // State for edit dialog
@@ -41,18 +51,21 @@ const MonitorDetailsPage: React.FC = () => {
                 monitorData,
                 heartbeatData,
                 statsData,
-                eventData
+                eventData,
+                chartData
             ] = await Promise.all([
                 monitoringService.getWebsite(monitorId), // Fetch monitor details
                 monitoringService.getRecentHeartbeats(monitorId, 100), // Fetch recent 100 heartbeats
                 monitoringService.getMonitorStats(monitorId), // Fetch summary stats
-                monitoringService.getImportantEvents(monitorId, 50) // Fetch last 50 important events
+                monitoringService.getImportantEvents(monitorId, 50), // Fetch last 50 important events
+                monitoringService.getChartData(monitorId, chartTimeRange) // Fetch chart data
             ]);
 
                 setMonitor(monitorData);
                 setHeartbeats(heartbeatData);
                 setStats(statsData);
                 setImportantEvents(eventData);
+                setChartData(chartData);
 
                 // Log the fetched heartbeats for debugging
                 console.log(`[MonitorDetailsPage] Heartbeats for monitor ${monitorId}:`, heartbeatData);
@@ -303,8 +316,27 @@ const MonitorDetailsPage: React.FC = () => {
                     </CardContent>
                 </Card>
 
-                {/* Optional: Ping Chart Card */}
-                {/* <Card>...</Card> */}
+                {/* Performance Charts */}
+                <PerformanceChart
+                    websiteId={monitor.id.toString()}
+                    websiteName={monitor.name}
+                    performanceData={chartData}
+                    thresholdMs={monitor.timeout_ms || 2000}
+                    onTimeRangeChange={async (range) => {
+                        setChartTimeRange(range);
+                        try {
+                            const newChartData = await monitoringService.getChartData(monitor.id, range);
+                            setChartData(newChartData);
+                        } catch (err) {
+                            console.error('Error fetching chart data:', err);
+                            toast({
+                                title: "Error",
+                                description: "Failed to load chart data",
+                                variant: "destructive"
+                            });
+                        }
+                    }}
+                />
 
                 {/* Optional: Certificate Info Card */}
                 {stats?.certIssuer && (

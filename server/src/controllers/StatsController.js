@@ -172,17 +172,26 @@ const StatsController = {
         }
 
         try {
-            // Assuming UptimeCalculator is compatible with pg or uses db.js functions
             const calculator = await UptimeCalculator.getUptimeCalculator(monitorId);
             const statsArray = calculator.getStatsArray(numPeriods, type);
 
-            const chartData = statsArray.map(stat => ({
-                timestamp: stat.timestamp, // Assuming timestamp is already correct format/type
-                avgPing: stat.avg_ping,
-                up: stat.up_count,
-                down: stat.down_count,
-                maintenance: stat.maintenance_count,
-            }));
+            // Transform the data to match the frontend's expected format
+            const chartData = statsArray.map(stat => {
+                const total = (stat.up_count || 0) + (stat.down_count || 0) + (stat.maintenance_count || 0);
+                const upCount = stat.up_count || 0;
+                const downCount = stat.down_count || 0;
+                const uptimePercentage = total > 0 ? (upCount / total) * 100 : 100;
+
+                return {
+                    timestamp: stat.timestamp,
+                    responseTime: stat.avg_ping || 0,
+                    status: upCount > downCount ? "up" : "down",
+                    uptime: uptimePercentage,
+                    requestCount: total,
+                    successCount: upCount,
+                    failureCount: downCount
+                };
+            });
 
             res.json(chartData);
         } catch (error) {
