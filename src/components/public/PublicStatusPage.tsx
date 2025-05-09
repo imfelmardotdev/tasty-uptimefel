@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Calendar, Loader2, AlertTriangle } from 'lucide-react'; // Import necessary icons
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -102,12 +103,20 @@ const PublicStatusPage = () => {
                 {/* Header Section */}
                 <div className="bg-white p-4 rounded-lg shadow mb-6 flex flex-wrap justify-between items-center gap-2">
                     <h1 className="text-xl font-semibold text-gray-900">Status page</h1>
-                    <div className="text-sm text-gray-600 text-right">
-                        <p className="font-medium">Service status</p>
-                        <p>
-                            {lastUpdated ? `Last updated ${dayjs(lastUpdated).format('HH:mm:ss A')}` : 'Updating...'}
-                            {/* Placeholder for next update time */}
-                        </p>
+                    <div className="flex items-center gap-4">
+                        <div className="text-sm text-gray-600 text-right">
+                            <p className="font-medium">Service status</p>
+                            <p>
+                                {lastUpdated ? `Last updated ${dayjs(lastUpdated).format('HH:mm:ss A')}` : 'Updating...'}
+                                {/* Placeholder for next update time */}
+                            </p>
+                        </div>
+                        <Button 
+                            variant="outline" 
+                            onClick={() => window.location.href = '/signin'}
+                        >
+                            Login
+                        </Button>
                     </div>
                 </div>
 
