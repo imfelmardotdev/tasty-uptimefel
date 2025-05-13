@@ -1,115 +1,197 @@
 # WebMonitor
 
-A web application for monitoring website uptime and performance.
+A comprehensive website monitoring system that tracks uptime, performance, and provides real-time alerts for your web applications.
 
-## Environment Setup
+## Features
 
-### Backend (.env)
+- **Website Monitoring**
+  - HTTP endpoint monitoring
+  - Configurable monitor types and settings
+  - Real-time status checks
+  - Historical uptime tracking
 
-```env
-# Server Configuration
-PORT=3001
-NODE_ENV=development
-JWT_SECRET=your-very-secure-secret
+- **Performance Analytics**
+  - Response time tracking
+  - Minutely, hourly, and daily statistics
+  - Performance trend visualization
+  - Heartbeat monitoring
 
-# Database Configuration
-DATABASE_PATH=./monitoring.db
+- **Notification System**
+  - Webhook-based alerts
+  - Customizable notification settings
+  - Instant downtime alerts
+  - Status change notifications
 
-# CORS Configuration
-FRONTEND_URL=http://localhost:5173
-```
+- **Dashboard Interface**
+  - Real-time status display
+  - Performance charts and graphs
+  - Historical data visualization
+  - Website management UI
 
-### Frontend (.env)
+## Tech Stack
 
-```env
-# API Configuration
-VITE_API_URL=http://localhost:3001
-VITE_NODE_ENV=development
+- **Frontend**
+  - React with TypeScript
+  - Vite for build tooling
+  - TailwindCSS for styling
+  - Recharts for data visualization
+  - React Router for navigation
 
-# App Configuration
-VITE_APP_NAME=WebMonitor
-VITE_APP_DESCRIPTION=Website Monitoring Dashboard
-```
+- **Backend**
+  - Node.js with Express
+  - SQLite database
+  - JWT authentication
+  - Node-cron for scheduled tasks
 
-## Project Structure
+## Getting Started
 
-```
-uptimefel/
-├── src/             # Frontend source code
-├── server/          # Backend server code
-│   └── src/
-│       ├── auth/    # Authentication
-│       ├── database/# Database operations
-│       └── monitoring/# Website monitoring
-└── public/         # Static assets
-```
+### Prerequisites
 
-## Development Setup
+- Node.js (v14 or higher)
+- npm (v6 or higher)
+
+### Installation
 
 1. Clone the repository
-2. Install dependencies:
    ```bash
-   npm install        # Install frontend dependencies
+   git clone <repository-url>
+   cd uptimefel
+   ```
+
+2. Install dependencies
+   ```bash
+   # Install frontend dependencies
+   npm install
+
+   # Install backend dependencies
    cd server
-   npm install       # Install backend dependencies
+   npm install
    cd ..
    ```
 
-3. Set up environment files:
+3. Set up environment files
    ```bash
-   # Copy frontend env file
+   # Frontend environment
    cp .env.example .env
 
-   # Copy backend env file
+   # Backend environment
    cd server
    cp .env.example .env
    cd ..
    ```
 
-4. Start development servers:
-   ```bash
-   # Run both frontend and backend
-   npm run dev:all
+4. Configure environment variables
 
-   # Or run them separately:
-   npm run dev      # Frontend only
-   npm run server   # Backend only
+   Frontend (.env):
+   ```env
+   # API Configuration
+   VITE_API_URL=http://localhost:3001
+   VITE_NODE_ENV=development
+
+   # App Configuration
+   VITE_APP_NAME=WebMonitor
+   VITE_APP_DESCRIPTION=Website Monitoring Dashboard
    ```
 
-5. Register the first admin user:
-   ```bash
-   curl -X POST http://localhost:3001/api/auth/register \
-   -H "Content-Type: application/json" \
-   -d '{"email":"admin@example.com","password":"your-secure-password"}'
+   Backend (server/.env):
+   ```env
+   # Server Configuration
+   PORT=3001
+   NODE_ENV=development
+   JWT_SECRET=your-very-secure-secret
+
+   # Database Configuration
+   DATABASE_PATH=./monitoring.db
+
+   # CORS Configuration
+   FRONTEND_URL=http://localhost:5173
    ```
 
-6. Access the application at http://localhost:5173
+### Database Setup
 
-## Production Deployment
+1. Initialize the database
+   ```bash
+   cd server
+   node run-migrations-sqlite.js
+   cd ..
+   ```
 
-For production deployment, update the environment variables:
+### Development
 
-### Backend Production Settings:
-```env
-NODE_ENV=production
-JWT_SECRET=your-actual-secure-secret
-FRONTEND_URL=https://your-frontend-domain.com
+Start both frontend and backend servers:
+```bash
+npm run dev:all
 ```
 
-### Frontend Production Settings:
-```env
-VITE_NODE_ENV=production
-VITE_API_URL=https://your-api-domain.com
+Or run them separately:
+```bash
+# Frontend only (http://localhost:5173)
+npm run dev
+
+# Backend only (http://localhost:3001)
+npm run server
 ```
 
-## Security
+### Available Scripts
 
-- Environment files (.env) contain sensitive information and should never be committed to the repository
-- The .env.example files serve as templates and should be copied to .env files
-- Add to your .gitignore:
-  ```
-  # Environment files
-  .env
-  .env.local
-  .env.*.local
-  ```
+- `npm run dev` - Start frontend development server
+- `npm run server` - Start backend server
+- `npm run dev:all` - Start both frontend and backend
+- `npm run build` - Build frontend for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+
+## API Overview
+
+### Authentication Endpoints
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - User login
+
+### Website Monitoring Endpoints
+- `GET /api/websites` - List monitored websites
+- `POST /api/websites` - Add new website
+- `PUT /api/websites/:id` - Update website
+- `DELETE /api/websites/:id` - Remove website
+- `GET /api/websites/:id/history` - Get monitoring history
+
+### Statistics Endpoints
+- `GET /api/stats/minutely` - Get minutely stats
+- `GET /api/stats/hourly` - Get hourly stats
+- `GET /api/stats/daily` - Get daily stats
+
+### Notification Endpoints
+- `GET /api/notifications` - Get notification settings
+- `POST /api/notifications` - Update notification settings
+
+## Monitoring Configuration
+
+Websites can be monitored using different strategies:
+
+```json
+{
+  "monitorType": "http",
+  "monitor_config": {
+    "method": "GET",
+    "timeout": 5000,
+    "expectedStatus": 200
+  }
+}
+```
+
+## Security Notes
+
+- Protect your JWT_SECRET in production
+- Use HTTPS in production
+- Keep your dependencies updated
+- Follow security best practices for authentication
+
+## Additional Documentation
+
+- [API Documentation](./docs/API.md)
+- [Architecture Overview](./docs/ARCHITECTURE.md)
+- [Deployment Guide](./docs/DEPLOYMENT.md)
+- [Contributing Guidelines](./CONTRIBUTING.md)
+
+## License
+
+MIT License - see LICENSE file for details
