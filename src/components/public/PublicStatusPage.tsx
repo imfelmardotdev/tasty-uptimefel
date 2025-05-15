@@ -30,14 +30,6 @@ interface OverallUptimeStats {
     uptime_90d: number;
 }
 
-interface StatusUpdate {
-    id: number;
-    timestamp: string;
-    title: string;
-    description: string;
-    status: 'resolved' | 'investigating' | 'monitoring';
-}
-
 // Placeholder data for sections not yet covered by API
 const placeholderOverallUptime: OverallUptimeStats = {
     uptime_24h: 0.000, // Placeholder
@@ -45,7 +37,6 @@ const placeholderOverallUptime: OverallUptimeStats = {
     uptime_30d: 0.070, // Placeholder
     uptime_90d: 0.070, // Placeholder
 };
-const placeholderStatusUpdates: StatusUpdate[] = []; // Placeholder
 // --- End Placeholder Data ---
 
 
@@ -229,25 +220,6 @@ const PublicStatusPage = () => {
                                     <p className="text-sm text-gray-500">Last 90 days</p>
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Status Updates Section (Using Placeholders) */}
-                <div className="mb-6">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                        Status updates <span className="text-base font-normal text-gray-600">Last 30 days</span>
-                    </h2>
-                    <Card className="bg-white p-4 rounded-lg shadow mt-2">
-                        <CardContent className="p-0">
-                            {placeholderStatusUpdates.length === 0 ? (
-                                <p className="text-gray-600">No incidents reported in the last 30 days.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {/* Map through placeholderStatusUpdates here when data is available */}
-                                    <p className="text-gray-500 italic">Status update display not yet implemented.</p>
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
                 </div>
